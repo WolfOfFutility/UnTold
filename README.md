@@ -2,10 +2,12 @@
 A simple OpenSource key/value store to empower local development of developer projects. All objects are saved to file for re-use in later iterations.
 
 ## Queries
+The store can be queried with a few basic calls. Each of these calls fall into one of the C.R.U.D. categories and are structured similarly to the examples below.
+
 - PUSH
     - Creates a new row within a store "table" with values provided.
     - Examples:
-        - PUSH Username = Admin, Password = admin TO Users
+        - ``` PUSH Username = Admin, Password = admin TO Users ```
 
 - PULL
     - Returns row object(s) based on query parameters.
