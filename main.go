@@ -28,8 +28,6 @@ func readTerminalInput() (string, error) {
 	return "", nil
 }
 
-
-
 func main() {
 	db := DB{}
 
@@ -62,10 +60,6 @@ func main() {
 	//db.loadTable("Testing")
 
 	// db.createTable("Users", []map[string]any{{"ColumnName":"Username", "ColumnType": "string", "Nullable": false}, {"ColumnName":"Password", "ColumnType": "string", "Nullable": false}}, "Username")
-	// err := db.runQuery("PULL * FROM Users")
-	// if err != nil {
-	// 	log.Println(err)
-	// }
 
 	inputQuery, inputErr := readTerminalInput()
 	if inputErr != nil {

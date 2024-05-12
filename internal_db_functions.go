@@ -1,22 +1,12 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
-	"strings"
 	"os"
-	"encoding/json"
+	"strings"
 )
-
-type UserLogin struct {
-	Username string
-	Password string
-}
-
-type AuthObject struct {
-	Username string
-	Token string
-}
 
 type DB struct {
 	Name string
@@ -37,21 +27,24 @@ type ColumnConfig struct {
 	Nullable bool
 }
 
-type ColumnValue struct {
-	ColumnName string
-	Value any
-}
-
+// This could probably be removed, actually
 type RowValue struct {
-	ColumnValues []ColumnValue
+	ColumnValues map[string]any
 }
 
 type DBQuery struct {
-	TableName string			// `json:"tableName"`
-	ColumnNames []string		// `json:"columnNames"`
-	Operation string			// `json:"operation"`
-	ArgumentClause []string 	// `json:"arugmentClause"`
+	TableName string					// `json:"tableName"`
+	ColumnNames []string				// `json:"columnNames"`
+	Operation string					// `json:"operation"`
+	ArgumentClause []map[string]any 	// `json:"arugmentClause"`
 	OptionsClause map[string]any
+}
+
+// This should be used for the Argument Clause of a query
+type ArgumentClause struct {
+	Left string
+	Operator string
+	Right string
 }
 
 // Simple contains function for the array string type
@@ -64,6 +57,7 @@ func Contains(a []string, substring string) (bool) {
 	return false
 }
 
+// Wraps up the database, saves it to file and wipes the memory
 func (db *DB) Close() {
 	db.saveTables()
 	db = nil
@@ -85,7 +79,9 @@ func (db *DB) saveTables() {
 			fmt.Println(err)
 		}
 
-		file, err := os.OpenFile(fmt.Sprintf("databases/%v.json", value.Name), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0755)
+		startContent := len(content)
+
+		file, err := os.OpenFile(fmt.Sprintf("stores/%v.json", value.Name), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0755)
 		if err != nil {
 			fmt.Println(err)
 		}
@@ -95,20 +91,20 @@ func (db *DB) saveTables() {
 			fmt.Println(fileWriteErr)
 		}
 
+		if(startContent <= bytes) {
+			log.Println("Saved", value.Name, "store successfully.")
+		} else {
+			fmt.Printf("failed to save %v store", value.Name)
+		}
+
 		defer file.Close()
-
-		log.Println(bytes)
-
-		// err = os.WriteFile(fmt.Sprintf("databases/%v.json", value.Name), content, 0755)
-		// if err != nil {
-		// 	log.Fatal(err)
-		// }
 	}
 }
 
 // Load table to DB from JSON
+// ** This could probably be improved to only load specific data as needed, or allow for concurrency
 func (db *DB) loadTable(tableName string) (error) {
-	content, err := os.ReadFile(fmt.Sprintf("databases/%v.json", tableName))
+	content, err := os.ReadFile(fmt.Sprintf("stores/%v.json", tableName))
 	if err != nil {
 		return err
 	}
@@ -134,54 +130,29 @@ func (db *DB) getTable(tableName string) (int, error) {
 	return 0, fmt.Errorf("no table was found with the name: %v", tableName)
 }
 
-func (r *RowValue) addColumnValue(TableConfig []ColumnConfig, ColumnName string, Value any) (error) {
-	checkCount := 0
-
-	for _, value := range TableConfig {
-		if value.ColumnName != ColumnName {
-			checkCount = checkCount + 1
-		}
-
-		if checkCount == len(TableConfig) {
-			return fmt.Errorf("column name could not be found: %v", ColumnName)
-		}
-	}
-
-	r.ColumnValues = append(r.ColumnValues, ColumnValue{ColumnName: ColumnName, Value: Value})
-	return nil
-}
-
-func (r *RowValue) getRowValue(justValues bool, columnNamesToInclude []string) (map[string]any, []any) {
+// Gets the values for a row
+// ** This might need to be fleshed out to return a map, to allow for better data return accuracy
+func (r *RowValue) getRowValue(columnNamesToInclude []string) (map[string]any, []any) {
 	filteredColumns := []string{}
+
+	row := []any{}
 
 	// Allow for wildcard in the included columns
 	if !(Contains(columnNamesToInclude, "*")) {
 		filteredColumns = columnNamesToInclude
 	}
 
-	if justValues {
-		row := []any{}
-
-		for _, value := range r.ColumnValues {
-			if (len(filteredColumns) > 0 && Contains(filteredColumns, value.ColumnName)) || (len(filteredColumns) == 0) {
-				row = append(row, value.Value)
-			}
+	// Filter through the row values
+	for name, value := range r.ColumnValues {
+		if (len(filteredColumns) > 0 && Contains(filteredColumns, name)) || len(filteredColumns) == 0 {
+			row = append(row, value)
 		}
-
-		return nil, row
-	} else {
-		row := make(map[string]any)
-
-		for _, value := range r.ColumnValues {
-			if (len(filteredColumns) > 0 && Contains(filteredColumns, value.ColumnName)) || (len(filteredColumns) == 0) {
-				row[value.ColumnName] = value.Value
-			}	
-		}
-
-		return row, nil
 	}
+
+	return nil, row
 }
 
+// Returns a list of the names of the columns to include based on the options argument in a query
 func (t *DBTable) getColumnHeaders(columnNamesToInclude []string) ([]string) {
 	headers := []string{}
 	filteredColumns := []string{}
@@ -201,27 +172,100 @@ func (t *DBTable) getColumnHeaders(columnNamesToInclude []string) ([]string) {
 	return headers
 }
 
+// Adds a new table row to the table
+// ** This might be able to be improved by only writing bytes at a certain location, instead of parsing the whole file
 func (table *DBTable) addTableRow(cv map[string]any) (error) {
-	// log.Println(len(cv))
-	// ** Allow for nullable fields, do checks against it
-
-	if len(cv) < len(table.ColumnConfig) {
-		return fmt.Errorf("not enough columns were specified for table: %v", table.Name)
+	newRow := RowValue{
+		ColumnValues: map[string]any{},
 	}
 
-	newRow := RowValue{}
-
-	for name, value := range cv {
-		newRow.addColumnValue(table.ColumnConfig, name, value)
+	// Check if all columns are accounted for
+	// Check for Nullable values
+	// ** Needs to account for type setting on the columns
+	for _, value := range table.ColumnConfig {
+		if cv[value.ColumnName] == nil && !value.Nullable {
+			return fmt.Errorf("%v column was excluded from the query and should not be null", value.ColumnName)
+		} else if cv[value.ColumnName] == nil && value.Nullable {
+			newRow.ColumnValues[value.ColumnName] = nil
+		} else {
+			newRow.ColumnValues[value.ColumnName] = cv[value.ColumnName]
+		}
 	}
 
+	// Append the row to the row values for the table
 	table.RowValues = append(table.RowValues, newRow)
+
 	return nil
 }
 
+// Updates table row based on values
+// ** This could probably be optimised quite a lot, given how many loops this relies on
+// ** This might need more error handling included
+func (table *DBTable) updateTableRow(query DBQuery) (error) {
+	modifiedValues := 0;
+
+	for _, rowValue := range table.RowValues {
+
+		for _, argumentValue := range query.ArgumentClause {
+			if rowValue.ColumnValues[argumentValue["Left"].(string)] != nil {
+				switch argumentValue["Operator"] {
+				case "=":
+					if rowValue.ColumnValues[argumentValue["Left"].(string)] == argumentValue["Right"] {
+						for optionName, optionValue := range query.OptionsClause {
+							if rowValue.ColumnValues[optionName] != nil {
+								rowValue.ColumnValues[optionName] = optionValue
+								modifiedValues = modifiedValues + 1
+							}
+
+							if modifiedValues >= len(query.OptionsClause) {
+								break;
+							}
+						}
+					}
+				default :
+					return fmt.Errorf("invalid operator was supplied to update table row: %v", argumentValue["Operator"])
+				}
+			}
+
+			if rowValue.ColumnValues[argumentValue["Right"].(string)] != nil {
+				switch argumentValue["Operator"] {
+				case "=":
+					if rowValue.ColumnValues[argumentValue["Right"].(string)] == argumentValue["Left"] {
+						for optionName, optionValue := range query.OptionsClause {
+							if rowValue.ColumnValues[optionName] != nil {
+								rowValue.ColumnValues[optionName] = optionValue
+								modifiedValues = modifiedValues + 1
+							}
+
+							if modifiedValues >= len(query.OptionsClause) {
+								break;
+							}
+						}
+					}
+				default :
+					return fmt.Errorf("invalid operator was supplied to update table row: %v", argumentValue["Operator"])
+				}
+			}
+
+			if modifiedValues >= len(query.OptionsClause) {
+				break;
+			}
+		}
+
+		if modifiedValues >= len(query.OptionsClause) {
+			break;
+		}
+	}
+
+	return nil
+}
+
+// Creates a new table for the store
+// ** Want to create something that automatically generates a table based on a struct
 func (db *DB) createTable(tableName string, columnConfig []map[string]any, PrimaryKeyColumnName string) {
 	configItems := []ColumnConfig{}
 
+	// Set column config 
 	for _, value := range columnConfig {
 		newConfigItem := ColumnConfig{
 			ColumnName: value["ColumnName"].(string),
@@ -232,6 +276,7 @@ func (db *DB) createTable(tableName string, columnConfig []map[string]any, Prima
 		configItems = append(configItems, newConfigItem)
 	}
 	
+	// Set the database table and mount it
 	table := DBTable{
 		Name: tableName,
 		ColumnConfig: configItems,
@@ -242,6 +287,60 @@ func (db *DB) createTable(tableName string, columnConfig []map[string]any, Prima
 	db.attachTable(table)
 }
 
+// Runs a query, breaks it down and calls the appropriate function as needed
+func (db *DB) runQuery(queryStr string) (error) {
+	// Breakdown the query into elements
+	query, err := queryBreakdown(queryStr)
+	if err != nil {
+		log.Println("Query Breakdown Error: ", err)
+		return fmt.Errorf("failed to parse database query")
+	}
+
+	// Load the table needed for the query
+	loadTableErr := db.loadTable(query.TableName)
+	if loadTableErr != nil {
+		log.Println("Load Table Error: ", loadTableErr)
+		if strings.Contains(loadTableErr.Error(), "cannot find the file") {
+			return fmt.Errorf("database could not be found with the name: %v", query.TableName)
+		} else {
+			return fmt.Errorf("failed to load table data into the database")
+		}
+	}
+
+	// Get the table index in the list of tables currently in memory
+	tableIndex, queryTableErr := db.getTable(query.TableName)
+	if queryTableErr != nil {
+		log.Println("Get Queried Table Error: ", queryTableErr)
+	}
+
+	switch query.Operation {
+	case "PULL":
+		// ** Needs more logic to actually return object(s)
+		// ** Needs more logic to properly display things in terminal as a data table
+		printTableOutput(db.Tables[tableIndex], query)
+	case "PUSH":
+		addTableRowErr := db.Tables[tableIndex].addTableRow(query.OptionsClause)
+		if addTableRowErr != nil {
+			return addTableRowErr
+		}
+
+		log.Println("Added table row successfully.")
+	case "PUT" :
+		updateErr := db.Tables[tableIndex].updateTableRow(query)
+		if updateErr != nil {
+			return updateErr
+		}
+
+		log.Println("Updated table row successfully.")
+	case "DELETE":
+		log.Println("DELETE Request")
+	default :
+		return fmt.Errorf("%v is an unsupported operation type", query.Operation)
+	}
+
+	return nil
+}
+
 // Break down a query string into its base elements for re-use later
 // ** Need to factor in table joining
 func queryBreakdown(query string) (DBQuery, error) {
@@ -250,7 +349,7 @@ func queryBreakdown(query string) (DBQuery, error) {
 
 	currentOperation := ""
 	targetTable := ""
-	argumentClause := []string{}
+	argumentClause := []map[string]any{}
 	optionsClause := make(map[string]any)
 
 	// specify different operation types and check that the query contains them
@@ -325,65 +424,22 @@ func queryBreakdown(query string) (DBQuery, error) {
 				if Contains([]string{"SORT"}, queryArr[i]) {
 					break
 				} else {
+					// Handle an argument clause, doesn't matter if this includes AND or , between them, as it tracks it from the operator itself
+					newClause := make(map[string]any)
 					cleanString := strings.Replace(queryArr[i], ",", "", -1)
-					log.Println(cleanString) 
-					argumentClause = append(argumentClause, cleanString)
+
+					if Contains([]string{"=", "%"}, cleanString) && strings.Replace(queryArr[i - 1], ",", "", -1) != "WHERE" {
+						newClause["Left"] = strings.Replace(queryArr[i - 1], ",", "", -1)
+						newClause["Operator"] = cleanString
+						newClause["Right"] = strings.Replace(queryArr[i + 1], ",", "", -1)
+						argumentClause = append(argumentClause, newClause)
+					}
 				}
 			}
 		}
 	}
 
 	return DBQuery{TableName: targetTable, ColumnNames: columns, Operation: currentOperation, OptionsClause: optionsClause, ArgumentClause: argumentClause}, nil
-}
-
-func (db *DB) runQuery(queryStr string) (error) {
-	// Breakdown the query into elements
-	query, err := queryBreakdown(queryStr)
-	if err != nil {
-		log.Println("Query Breakdown Error: ", err)
-		return fmt.Errorf("failed to parse database query")
-	}
-
-	// Load the table needed for the query
-	loadTableErr := db.loadTable(query.TableName)
-	if loadTableErr != nil {
-		log.Println("Load Table Error: ", loadTableErr)
-		if strings.Contains(loadTableErr.Error(), "cannot find the file") {
-			return fmt.Errorf("database could not be found with the name: %v", query.TableName)
-		} else {
-			return fmt.Errorf("failed to load table data into the database")
-		}
-	}
-
-	// get the table index in the list of tables currently in memory
-	tableIndex, queryTableErr := db.getTable(query.TableName)
-	if queryTableErr != nil {
-		log.Println("Get Queried Table Error: ", queryTableErr)
-	}
-
-	switch query.Operation {
-	case "PULL":
-		printTableOutput(db.Tables[tableIndex], query)
-	case "PUSH":
-		addTableRowErr := db.Tables[tableIndex].addTableRow(query.OptionsClause)
-		if addTableRowErr != nil {
-			return addTableRowErr
-		}
-
-		log.Println("Added table row successfully.")
-	case "PUT" :
-		log.Println("PUT Request")
-	case "DELETE":
-		log.Println("DELETE Request")
-	default :
-		return fmt.Errorf("%v is an unsupported operation type", query.Operation)
-	}
-
-	
-	// db.Tables[tableIndex].addTableRow([]ColumnValue{{ColumnName: "Name", Value: "Test2"},{ColumnName: "Number", Value: 100}})
-	// db.saveTables()
-
-	return nil
 }
 
 // returns joined string with an array of any input, gets around the strict parsing that strings.Join() has
@@ -409,7 +465,7 @@ func printTableOutput(table DBTable, query DBQuery) {
 			log.Println("--------------------------------------------------")
 		}
 
-		_, rowValues := value.getRowValue(true, query.ColumnNames)
+		_, rowValues := value.getRowValue(query.ColumnNames)
 		log.Println(getJoinedString(rowValues, " | "))
 	}
 }

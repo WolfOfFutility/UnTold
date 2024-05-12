@@ -1,0 +1,1 @@
+{"Name":"Users","ColumnConfig":[{"ColumnName":"Username","ColumnType":"string","Nullable":false},{"ColumnName":"Password","ColumnType":"string","Nullable":false}],"PrimaryKeyColumnName":"Username","ForeignKeyColumnName":null,"RowValues":[{"ColumnValues":{"Password":"newPass","Username":"Admin"}}]}
