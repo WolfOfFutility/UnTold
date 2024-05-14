@@ -260,6 +260,58 @@ func (table *DBTable) updateTableRow(query DBQuery) (error) {
 	return nil
 }
 
+// Remove a table row based on arguments
+// ** This could probably be optimised quite a lot, it relies on a few loops
+// ** This might need more error handling included
+func (table *DBTable) removeTableRow(query DBQuery) (error) {
+	modifiedValues := 0;
+
+	for rowIndex, rowValue := range table.RowValues {
+
+		for _, argumentValue := range query.ArgumentClause {
+			if rowValue.ColumnValues[argumentValue["Left"].(string)] != nil {
+				switch argumentValue["Operator"] {
+				case "=":
+					if rowValue.ColumnValues[argumentValue["Left"].(string)] == argumentValue["Right"] {
+						table.RowValues = append(table.RowValues[:rowIndex], table.RowValues[rowIndex+1:]...)
+						modifiedValues = modifiedValues + 1
+						break;
+					}
+				default :
+					return fmt.Errorf("invalid operator was supplied to update table row: %v", argumentValue["Operator"])
+				}
+			}
+
+			if rowValue.ColumnValues[argumentValue["Right"].(string)] != nil {
+				switch argumentValue["Operator"] {
+				case "=":
+					if rowValue.ColumnValues[argumentValue["Right"].(string)] == argumentValue["Left"] {
+						table.RowValues = append(table.RowValues[:rowIndex], table.RowValues[rowIndex+1:]...)
+						modifiedValues = modifiedValues + 1
+						break;
+					}
+				default :
+					return fmt.Errorf("invalid operator was supplied to update table row: %v", argumentValue["Operator"])
+				}
+			}
+
+			if modifiedValues >= len(query.OptionsClause) {
+				break;
+			}
+		}
+
+		if modifiedValues >= len(query.OptionsClause) {
+			break;
+		}
+	}
+
+	if modifiedValues == 0 {
+		return fmt.Errorf("matching rows could not be found - no rows were deleted")
+	} else {
+		return nil
+	}	
+}
+
 // Creates a new table for the store
 // ** Want to create something that automatically generates a table based on a struct
 func (db *DB) createTable(tableName string, columnConfig []map[string]any, PrimaryKeyColumnName string) {
@@ -333,7 +385,13 @@ func (db *DB) runQuery(queryStr string) (error) {
 
 		log.Println("Updated table row successfully.")
 	case "DELETE":
-		log.Println("DELETE Request")
+		removeErr := db.Tables[tableIndex].removeTableRow(query)
+
+		if removeErr != nil {
+			return removeErr
+		}
+
+		log.Println("Removed table row successfully.")
 	default :
 		return fmt.Errorf("%v is an unsupported operation type", query.Operation)
 	}
