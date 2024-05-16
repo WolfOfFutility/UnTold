@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"reflect"
 	"strings"
 )
 
@@ -18,6 +19,8 @@ type DBTable struct {
 	ColumnConfig []ColumnConfig
 	PrimaryKeyColumnName string
 	ForeignKeyColumnName *string
+	AutoIncrementPrimary bool
+	NextID int
 	RowValues []RowValue
 }
 
@@ -71,30 +74,32 @@ func (db *DB) attachTable(table DBTable) {
 
 // Save the DB tables to JSON
 func (db *DB) saveTables() {
-	// log.Println(db.Tables)
 	for _, value := range db.Tables {
-		//fmt.Println(value)
 		content, err := json.Marshal(value)
 		if err != nil {
 			fmt.Println(err)
 		}
 
-		startContent := len(content)
-
-		file, err := os.OpenFile(fmt.Sprintf("stores/%v.json", value.Name), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0755)
+		file, err := os.OpenFile(fmt.Sprintf("stores/%v.dat", value.Name), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0755)
 		if err != nil {
 			fmt.Println(err)
 		}
 
-		bytes, fileWriteErr := file.Write(content)
-		if err != nil {
-			fmt.Println(fileWriteErr)
+		ekerr := generateEncryptionKey()
+		if ekerr != nil {
+			fmt.Println(ekerr)
+			return
 		}
 
-		if(startContent <= bytes) {
-			log.Println("Saved", value.Name, "store successfully.")
-		} else {
-			fmt.Printf("failed to save %v store", value.Name)
+		encryptedContent, EncryptErr := encrpytData([]byte(os.Getenv("EK")), content)
+		if EncryptErr != nil {
+			fmt.Println(EncryptErr)
+			return
+		}
+
+		_, fileWriteErr := file.Write(encryptedContent)
+		if err != nil {
+			fmt.Println(fileWriteErr)
 		}
 
 		defer file.Close()
@@ -104,13 +109,23 @@ func (db *DB) saveTables() {
 // Load table to DB from JSON
 // ** This could probably be improved to only load specific data as needed, or allow for concurrency
 func (db *DB) loadTable(tableName string) (error) {
-	content, err := os.ReadFile(fmt.Sprintf("stores/%v.json", tableName))
+	content, err := os.ReadFile(fmt.Sprintf("stores/%v.dat", tableName))
 	if err != nil {
 		return err
 	}
 
+	ekerr := generateEncryptionKey()
+	if ekerr != nil {
+		return ekerr
+	}
+
+	decryptedData, decryptErr := decryptData([]byte(os.Getenv("EK")), content)
+	if decryptErr != nil {
+		return decryptErr
+	}
+
 	data := DBTable{}
-	err = json.Unmarshal(content, &data)
+	err = json.Unmarshal(decryptedData, &data)
 	if err != nil {
 		return err
 	}
@@ -183,7 +198,10 @@ func (table *DBTable) addTableRow(cv map[string]any) (error) {
 	// Check for Nullable values
 	// ** Needs to account for type setting on the columns
 	for _, value := range table.ColumnConfig {
-		if cv[value.ColumnName] == nil && !value.Nullable {
+		if value.ColumnName == table.PrimaryKeyColumnName && cv[value.ColumnName] == nil && !value.Nullable && table.AutoIncrementPrimary {
+			newRow.ColumnValues[value.ColumnName] = table.NextID
+			table.NextID = table.NextID + 1
+		} else if cv[value.ColumnName] == nil && !value.Nullable {
 			return fmt.Errorf("%v column was excluded from the query and should not be null", value.ColumnName)
 		} else if cv[value.ColumnName] == nil && value.Nullable {
 			newRow.ColumnValues[value.ColumnName] = nil
@@ -314,7 +332,7 @@ func (table *DBTable) removeTableRow(query DBQuery) (error) {
 
 // Creates a new table for the store
 // ** Want to create something that automatically generates a table based on a struct
-func (db *DB) createTable(tableName string, columnConfig []map[string]any, PrimaryKeyColumnName string) {
+func (db *DB) createTable(tableName string, columnConfig []map[string]any, PrimaryKeyColumnName string, autoIncrementPrimary bool) {
 	configItems := []ColumnConfig{}
 
 	// Set column config 
@@ -333,10 +351,45 @@ func (db *DB) createTable(tableName string, columnConfig []map[string]any, Prima
 		Name: tableName,
 		ColumnConfig: configItems,
 		PrimaryKeyColumnName: PrimaryKeyColumnName,
+		AutoIncrementPrimary: autoIncrementPrimary,
+		NextID: 1,
 		RowValues: []RowValue{},
 	}
 
 	db.attachTable(table)
+}
+
+// Take a Map / Object of an example row and create a table from it
+func (db *DB) createTableFromMap(tableName string, primaryColumnName string, autoIncrementPrimary bool, exampleMap map[string]any) (error) {
+	columnConfigList := []ColumnConfig{}
+	primaryChecks := 0
+
+	// Take the example map, and fill the column config with the settings from it
+	for name, value := range exampleMap {
+		if name != primaryColumnName {
+			primaryChecks = primaryChecks + 1
+		}
+
+		columnConfigList = append(columnConfigList, ColumnConfig{ColumnName: name, ColumnType: reflect.TypeOf(value).String(), Nullable: value == nil})
+	}
+
+	if primaryChecks == len(columnConfigList) {
+		return fmt.Errorf("primary column name specified could not be found in the example row provided: %v", primaryColumnName)
+	}
+
+	// Set the database table and mount it
+	table := DBTable{
+		Name: tableName,
+		ColumnConfig: columnConfigList,
+		PrimaryKeyColumnName: primaryColumnName,
+		AutoIncrementPrimary: autoIncrementPrimary,
+		NextID: 1,
+		RowValues: []RowValue{},
+	}
+
+	db.attachTable(table)
+
+	return nil
 }
 
 // Runs a query, breaks it down and calls the appropriate function as needed

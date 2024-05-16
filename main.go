@@ -1,9 +1,6 @@
 package main
 
 import (
-	// "reflect"
-	// "fmt"
-// "os"
 	"fmt"
 	"log"
 	"bufio"
@@ -31,55 +28,42 @@ func readTerminalInput() (string, error) {
 func main() {
 	db := DB{}
 
-	// table := DBTable{
-	// 	Name: "Testing",
-	// 	ColumnConfig: []ColumnConfig{
-	// 		{
-	// 			ColumnName: "Name",
-	// 			ColumnType: "string",
-	// 			Nullable: false,
-	// 		},	
-	// 		{
-	// 			ColumnName: "Number",
-	// 			ColumnType: "int",
-	// 			Nullable: false,
-	// 		},	
-	// 	},
-	// 	PrimaryKeyColumnName: "Name",
-	// 	RowValues: []RowValue{},
+	// inputQuery, inputErr := readTerminalInput()
+	// if inputErr != nil {
+	// 	log.Println(inputErr)
+	// 	return
 	// }
 
-	// addTableErr := table.addTableRow(map[string]any{"Name": "Test1", "Number": 200})
-	// if addTableErr != nil {
-	// 	log.Println(addTableErr)
-	// }
-
-	// db.attachTable(table);
-	// db.saveTables();
-
-	//db.loadTable("Testing")
-
-	// db.createTable("Users", []map[string]any{{"ColumnName":"Username", "ColumnType": "string", "Nullable": false}, {"ColumnName":"Password", "ColumnType": "string", "Nullable": false}}, "Username")
-
-	inputQuery, inputErr := readTerminalInput()
-	if inputErr != nil {
-		log.Println(inputErr)
-		return
-	}
-
-	err := db.runQuery(inputQuery)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-
-	// err := db.runQuery("PUSH Username = User3, Password = pass TO Users")
+	// err := db.runQuery(inputQuery)
 	// if err != nil {
 	// 	log.Println(err)
+	// 	return
 	// }
+
+	// createDBErr := db.createTableFromMap("Users", "User_ID", true, map[string]any{"User_ID": 1, "Username": "Admin", "Password": "admin"})
+	// if createDBErr != nil {
+	// 	log.Fatal(createDBErr)
+	// }
+
+	queryErr := db.runQuery("PULL Username FROM Users")
+	if queryErr != nil {
+		log.Println(queryErr)
+	}
+
+	//db.createTableFromMap("EncryptedTable", "ENC_ID", map[string]any{"ENC_ID": 1})
+	// encryptedData, encryptErr := encrpytData([]byte(os.Getenv("EK")), "Hello there!")
+	// if encryptErr != nil {
+	// 	log.Println("Encrypt Error: ", encryptErr)
+	// }
+
+	// decryptedData, decryptErr := decryptData([]byte(os.Getenv("EK")), encryptedData)
+	// if decryptErr != nil {
+	// 	log.Println("Decrypt Error: ", decryptErr)
+	// }
+
+	// log.Println(encryptedData)
+	// log.Println(decryptedData)
 
 	// Clean up the database after use, save any changes, swipe value to nil
 	defer db.Close()
-
-	// log.Println("Response: ", response)
 }
