@@ -2,7 +2,6 @@ package main
 
 import (
 	"strings"
-	//"log"
 	"fmt"
 	"encoding/base64"
 )

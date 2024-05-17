@@ -1,6 +1,8 @@
 # Untold
 A simple OpenSource key/value store to empower local development of developer projects. All objects are saved to file for re-use in later iterations.
 
+This repository currently only uses base go modules - no third party open source options are used. 
+
 ## 1.0 - Queries
 The store can be queried with a few basic calls. Each of these calls fall into one of the C.R.U.D. categories and are structured similarly to the examples below.
 
