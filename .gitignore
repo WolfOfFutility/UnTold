@@ -1,2 +1,10 @@
 ## Ignore all .dat files
 *.dat
+
+# ignore files in folder
+keys/*
+stores/*
+
+# ...but keep the folder
+!keys/.gitkeep
+!stores/.gitkeep
