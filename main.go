@@ -25,8 +25,67 @@ func readTerminalInput() (string, error) {
 	return "", nil
 }
 
+func initialiseRootAccount() {
+	createUserError := createUser(UserLogin{Username: "root", Password: "root"})
+	if createUserError != nil {
+		log.Println(createUserError)
+		return
+	}
+}
+
 func main() {
-	db := DB{}
+	initialiseRootAccount()
+	userAuth, loginErr := userLogin(UserLogin{Username: "root", Password: "root"})
+	if loginErr != nil {
+		log.Println(loginErr)
+		return
+	}
+
+	isAuthed, authErr := confirmUserAuth(userAuth)
+	if authErr != nil {
+		log.Println(authErr)
+		return
+	}
+
+	log.Println(isAuthed)
+
+	// db := DB{}
+	// defer db.Close()
+
+	// db.runQuery("PULL PrivateToken FROM Users")
+
+	// ekErr := generateEncryptionKey(keyPath)
+	// if ekErr != nil {
+	// 	log.Println(ekErr)
+	// 	return
+	// }
+
+	// privKey, privKeyErr := generatePrivateKey()
+	// if privKeyErr != nil {
+	// 	log.Println(privKeyErr)
+	// 	return
+	// }
+
+	// encryptBytes, encryptErr := encrpytData([]byte(os.Getenv("EK")), privKey)
+	// if encryptErr != nil {
+	// 	log.Println(encryptErr)
+	// 	return
+	// }
+
+	// decryptedData, decryptErr := decryptData([]byte(os.Getenv("EK")), encryptBytes)
+	// if decryptErr != nil {
+	// 	log.Println(decryptErr)
+	// 	return
+	// }
+
+	// _, pubKeyErr := generatePublicKey(decryptedData)
+	// if pubKeyErr != nil {
+	// 	log.Println(pubKeyErr)
+	// 	return
+	// }
+
+
+	//log.Println(pubKey)
 
 	// inputQuery, inputErr := readTerminalInput()
 	// if inputErr != nil {
@@ -45,10 +104,15 @@ func main() {
 	// 	log.Fatal(createDBErr)
 	// }
 
-	queryErr := db.runQuery("PULL Username FROM Users")
-	if queryErr != nil {
-		log.Println(queryErr)
-	}
+	// queryErr := db.runQuery("PULL Username FROM Users")
+	// if queryErr != nil {
+	// 	log.Println(queryErr)
+	// }
+
+	// var keyFilePath *string
+	// keyFilePath = "key/main.dat"
+
+	// paramFire(testParams{keyFilePath: "keys/main.dat"})
 
 	//db.createTableFromMap("EncryptedTable", "ENC_ID", map[string]any{"ENC_ID": 1})
 	// encryptedData, encryptErr := encrpytData([]byte(os.Getenv("EK")), "Hello there!")
@@ -64,6 +128,7 @@ func main() {
 	// log.Println(encryptedData)
 	// log.Println(decryptedData)
 
+	
+
 	// Clean up the database after use, save any changes, swipe value to nil
-	defer db.Close()
 }

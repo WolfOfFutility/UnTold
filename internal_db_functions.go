@@ -9,6 +9,9 @@ import (
 	"strings"
 )
 
+// ** Set these variables to customise
+const keyPath = "keys/main.dat"
+
 type DB struct {
 	Name string
 	Tables []DBTable
@@ -50,16 +53,6 @@ type ArgumentClause struct {
 	Right string
 }
 
-// Simple contains function for the array string type
-func Contains(a []string, substring string) (bool) {
-	for _, value := range a {
-		if value == substring {
-			return true
-		}
-	}
-	return false
-}
-
 // Wraps up the database, saves it to file and wipes the memory
 func (db *DB) Close() {
 	db.saveTables()
@@ -72,7 +65,7 @@ func (db *DB) attachTable(table DBTable) {
 	db.Tables = append(db.Tables, table)
 }
 
-// Save the DB tables to JSON
+// Save the DB tables to .DAT
 func (db *DB) saveTables() {
 	for _, value := range db.Tables {
 		content, err := json.Marshal(value)
@@ -85,7 +78,7 @@ func (db *DB) saveTables() {
 			fmt.Println(err)
 		}
 
-		ekerr := generateEncryptionKey()
+		ekerr := generateEncryptionKey(keyPath)
 		if ekerr != nil {
 			fmt.Println(ekerr)
 			return
@@ -106,7 +99,7 @@ func (db *DB) saveTables() {
 	}
 }
 
-// Load table to DB from JSON
+// Load table to DB from .DAT
 // ** This could probably be improved to only load specific data as needed, or allow for concurrency
 func (db *DB) loadTable(tableName string) (error) {
 	content, err := os.ReadFile(fmt.Sprintf("stores/%v.dat", tableName))
@@ -114,7 +107,7 @@ func (db *DB) loadTable(tableName string) (error) {
 		return err
 	}
 
-	ekerr := generateEncryptionKey()
+	ekerr := generateEncryptionKey(keyPath)
 	if ekerr != nil {
 		return ekerr
 	}
@@ -143,6 +136,129 @@ func (db *DB) getTable(tableName string) (int, error) {
 	}
 
 	return 0, fmt.Errorf("no table was found with the name: %v", tableName)
+}
+
+// Creates a new table for the store
+// ** Want to create something that automatically generates a table based on a struct
+func (db *DB) createTable(tableName string, columnConfig []map[string]any, PrimaryKeyColumnName string, autoIncrementPrimary bool) {
+	configItems := []ColumnConfig{}
+
+	// Set column config 
+	for _, value := range columnConfig {
+		newConfigItem := ColumnConfig{
+			ColumnName: value["ColumnName"].(string),
+			ColumnType: value["ColumnType"].(string),
+			Nullable: value["Nullable"].(bool),
+		}
+
+		configItems = append(configItems, newConfigItem)
+	}
+	
+	// Set the database table and mount it
+	table := DBTable{
+		Name: tableName,
+		ColumnConfig: configItems,
+		PrimaryKeyColumnName: PrimaryKeyColumnName,
+		AutoIncrementPrimary: autoIncrementPrimary,
+		NextID: 1,
+		RowValues: []RowValue{},
+	}
+
+	db.attachTable(table)
+}
+
+// Take a Map / Object of an example row and create a table from it
+func (db *DB) createTableFromMap(tableName string, primaryColumnName string, autoIncrementPrimary bool, exampleMap map[string]any) (error) {
+	columnConfigList := []ColumnConfig{}
+	primaryChecks := 0
+
+	// Take the example map, and fill the column config with the settings from it
+	for name, value := range exampleMap {
+		if name != primaryColumnName {
+			primaryChecks = primaryChecks + 1
+		}
+
+		columnConfigList = append(columnConfigList, ColumnConfig{ColumnName: name, ColumnType: reflect.TypeOf(value).String(), Nullable: value == nil})
+	}
+
+	if primaryChecks == len(columnConfigList) {
+		return fmt.Errorf("primary column name specified could not be found in the example row provided: %v", primaryColumnName)
+	}
+
+	// Set the database table and mount it
+	table := DBTable{
+		Name: tableName,
+		ColumnConfig: columnConfigList,
+		PrimaryKeyColumnName: primaryColumnName,
+		AutoIncrementPrimary: autoIncrementPrimary,
+		NextID: 1,
+		RowValues: []RowValue{},
+	}
+
+	db.attachTable(table)
+
+	return nil
+}
+
+// Runs a query, breaks it down and calls the appropriate function as needed
+func (db *DB) runQuery(queryStr string) (error) {
+	// Breakdown the query into elements
+	query, err := queryBreakdown(queryStr)
+	if err != nil {
+		log.Println("Query Breakdown Error: ", err)
+		return fmt.Errorf("failed to parse database query")
+	}
+
+	// Load the table needed for the query
+	loadTableErr := db.loadTable(query.TableName)
+
+	if loadTableErr != nil {
+		log.Println("Load Table Error: ", loadTableErr)
+		if strings.Contains(loadTableErr.Error(), "cannot find the file") {
+			return fmt.Errorf("database could not be found with the name: %v", query.TableName)
+		} else {
+			return fmt.Errorf("failed to load table data into the database")
+		}
+	}
+
+	// Get the table index in the list of tables currently in memory
+	tableIndex, queryTableErr := db.getTable(query.TableName)
+	if queryTableErr != nil {
+		log.Println("Get Queried Table Error: ", queryTableErr)
+	}
+
+	switch query.Operation {
+	case "PULL":
+		// ** Needs more logic to actually return object(s)
+		// ** Needs more logic to properly display things in terminal as a data table
+		printTableOutput(db.Tables[tableIndex], query)
+	case "PUSH":
+		addTableRowErr := db.Tables[tableIndex].addTableRow(query.OptionsClause)
+		if addTableRowErr != nil {
+			return addTableRowErr
+		}
+
+		log.Println("Added table row successfully.")
+	case "PUT" :
+		updateErr := db.Tables[tableIndex].updateTableRow(query)
+		if updateErr != nil {
+			return updateErr
+		}
+
+		log.Println("Updated table row successfully.")
+	case "DELETE":
+		removeErr := db.Tables[tableIndex].removeTableRow(query)
+
+		if removeErr != nil {
+			return removeErr
+		}
+
+		log.Println("Removed table row successfully.")
+	default :
+		return fmt.Errorf("%v is an unsupported operation type", query.Operation)
+	}
+
+	return nil
 }
 
 // Gets the values for a row
@@ -330,128 +446,6 @@ func (table *DBTable) removeTableRow(query DBQuery) (error) {
 	}	
 }
 
-// Creates a new table for the store
-// ** Want to create something that automatically generates a table based on a struct
-func (db *DB) createTable(tableName string, columnConfig []map[string]any, PrimaryKeyColumnName string, autoIncrementPrimary bool) {
-	configItems := []ColumnConfig{}
-
-	// Set column config 
-	for _, value := range columnConfig {
-		newConfigItem := ColumnConfig{
-			ColumnName: value["ColumnName"].(string),
-			ColumnType: value["ColumnType"].(string),
-			Nullable: value["Nullable"].(bool),
-		}
-
-		configItems = append(configItems, newConfigItem)
-	}
-	
-	// Set the database table and mount it
-	table := DBTable{
-		Name: tableName,
-		ColumnConfig: configItems,
-		PrimaryKeyColumnName: PrimaryKeyColumnName,
-		AutoIncrementPrimary: autoIncrementPrimary,
-		NextID: 1,
-		RowValues: []RowValue{},
-	}
-
-	db.attachTable(table)
-}
-
-// Take a Map / Object of an example row and create a table from it
-func (db *DB) createTableFromMap(tableName string, primaryColumnName string, autoIncrementPrimary bool, exampleMap map[string]any) (error) {
-	columnConfigList := []ColumnConfig{}
-	primaryChecks := 0
-
-	// Take the example map, and fill the column config with the settings from it
-	for name, value := range exampleMap {
-		if name != primaryColumnName {
-			primaryChecks = primaryChecks + 1
-		}
-
-		columnConfigList = append(columnConfigList, ColumnConfig{ColumnName: name, ColumnType: reflect.TypeOf(value).String(), Nullable: value == nil})
-	}
-
-	if primaryChecks == len(columnConfigList) {
-		return fmt.Errorf("primary column name specified could not be found in the example row provided: %v", primaryColumnName)
-	}
-
-	// Set the database table and mount it
-	table := DBTable{
-		Name: tableName,
-		ColumnConfig: columnConfigList,
-		PrimaryKeyColumnName: primaryColumnName,
-		AutoIncrementPrimary: autoIncrementPrimary,
-		NextID: 1,
-		RowValues: []RowValue{},
-	}
-
-	db.attachTable(table)
-
-	return nil
-}
-
-// Runs a query, breaks it down and calls the appropriate function as needed
-func (db *DB) runQuery(queryStr string) (error) {
-	// Breakdown the query into elements
-	query, err := queryBreakdown(queryStr)
-	if err != nil {
-		log.Println("Query Breakdown Error: ", err)
-		return fmt.Errorf("failed to parse database query")
-	}
-
-	// Load the table needed for the query
-	loadTableErr := db.loadTable(query.TableName)
-	if loadTableErr != nil {
-		log.Println("Load Table Error: ", loadTableErr)
-		if strings.Contains(loadTableErr.Error(), "cannot find the file") {
-			return fmt.Errorf("database could not be found with the name: %v", query.TableName)
-		} else {
-			return fmt.Errorf("failed to load table data into the database")
-		}
-	}
-
-	// Get the table index in the list of tables currently in memory
-	tableIndex, queryTableErr := db.getTable(query.TableName)
-	if queryTableErr != nil {
-		log.Println("Get Queried Table Error: ", queryTableErr)
-	}
-
-	switch query.Operation {
-	case "PULL":
-		// ** Needs more logic to actually return object(s)
-		// ** Needs more logic to properly display things in terminal as a data table
-		printTableOutput(db.Tables[tableIndex], query)
-	case "PUSH":
-		addTableRowErr := db.Tables[tableIndex].addTableRow(query.OptionsClause)
-		if addTableRowErr != nil {
-			return addTableRowErr
-		}
-
-		log.Println("Added table row successfully.")
-	case "PUT" :
-		updateErr := db.Tables[tableIndex].updateTableRow(query)
-		if updateErr != nil {
-			return updateErr
-		}
-
-		log.Println("Updated table row successfully.")
-	case "DELETE":
-		removeErr := db.Tables[tableIndex].removeTableRow(query)
-
-		if removeErr != nil {
-			return removeErr
-		}
-
-		log.Println("Removed table row successfully.")
-	default :
-		return fmt.Errorf("%v is an unsupported operation type", query.Operation)
-	}
-
-	return nil
-}
-
 // Break down a query string into its base elements for re-use later
 // ** Need to factor in table joining
 func queryBreakdown(query string) (DBQuery, error) {
@@ -579,4 +573,14 @@ func printTableOutput(table DBTable, query DBQuery) {
 		_, rowValues := value.getRowValue(query.ColumnNames)
 		log.Println(getJoinedString(rowValues, " | "))
 	}
+}
+
+// Simple contains function for the array string type
+func Contains(a []string, substring string) (bool) {
+	for _, value := range a {
+		if value == substring {
+			return true
+		}
+	}
+	return false
 }
