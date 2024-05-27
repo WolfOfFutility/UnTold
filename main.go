@@ -1,9 +1,9 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"log"
-	"bufio"
 	"os"
 )
 
@@ -12,10 +12,10 @@ func readTerminalInput() (string, error) {
 	var input string
 	scanner := bufio.NewScanner(os.Stdin)
 
-    for scanner.Scan() {
-        input = scanner.Text()
+	for scanner.Scan() {
+		input = scanner.Text()
 		return input, nil
-    }
+	}
 
 	if err := scanner.Err(); err != nil {
 		fmt.Println(err)
@@ -31,10 +31,7 @@ func initialiseRootAccount() {
 		log.Println(createUserError)
 		return
 	}
-}
 
-func main() {
-	initialiseRootAccount()
 	userAuth, loginErr := userLogin(UserLogin{Username: "root", Password: "root"})
 	if loginErr != nil {
 		log.Println(loginErr)
@@ -48,7 +45,27 @@ func main() {
 	}
 
 	log.Println(isAuthed)
+}
 
+func initSystem() (SystemDB, error) {
+	generateEcryptionKeyErr := generateEncryptionKey(keyPath)
+	if generateEcryptionKeyErr != nil {
+		log.Fatal("encryption key could not be generated")
+	}
+
+	system := SystemDB{
+		Users:    []PrivateAccessUser{},
+		Groups:   []AccessGroup{},
+		Roles:    []AccessRole{},
+		Policies: []AccessPolicy{},
+	}
+
+	system.loadSystemDB()
+	return system, nil
+}
+
+func main() {
+	initSystem()
 	// db := DB{}
 	// defer db.Close()
 
@@ -83,7 +100,6 @@ func main() {
 	// 	log.Println(pubKeyErr)
 	// 	return
 	// }
-
 
 	//log.Println(pubKey)
 
@@ -127,8 +143,6 @@ func main() {
 
 	// log.Println(encryptedData)
 	// log.Println(decryptedData)
-
-	
 
 	// Clean up the database after use, save any changes, swipe value to nil
 }
