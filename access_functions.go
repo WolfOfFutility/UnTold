@@ -13,7 +13,7 @@ type PublicAccessUser struct {
 }
 
 type PrivateAccessUser struct {
-	UserID           string
+	UserID           int
 	Username         string
 	Password         string
 	Roles            []AccessRole
@@ -365,4 +365,199 @@ func (s *SystemDB) assignUserToGroup(User PublicAccessUser, Group AccessGroup) e
 
 	// If it hits here, no matching user was found, return the error
 	return fmt.Errorf("a matching user could not be found within the system database")
+}
+
+// assign a role to the group
+func (s *SystemDB) assignGroupToRole(Group AccessGroup, Role AccessRole) error {
+	// check user exists
+	for _, groupItem := range s.Groups {
+		if groupItem.GroupID == Group.GroupID {
+
+			// check role exists
+			for _, roleItem := range s.Roles {
+				if Role.RoleID == roleItem.RoleID {
+
+					// check for duplicates within the group
+					for _, groupRoleItem := range groupItem.Roles {
+						if groupRoleItem.RoleID == Role.RoleID {
+							return fmt.Errorf("%v already has an assigned instance of %v", Group.Name, Role.Name)
+						}
+					}
+
+					// if it hits here, there are no duplicates assigned to the group - assign this role to the group
+					groupItem.Roles = append(groupItem.Roles, roleItem)
+					return nil
+				}
+			}
+
+			// If it hits here, no matching role was found, return the error
+			return fmt.Errorf("a matching role could not be found within the system database")
+		}
+	}
+
+	// If it hits here, no matching user was found, return the error
+	return fmt.Errorf("a matching group could not be found within the system database")
+}
+
+// create a new group
+func (s *SystemDB) createGroup(groupName string) error {
+	latestID := 0
+
+	// Check for group name overlap
+	for _, groupItem := range s.Groups {
+		if groupItem.Name == groupName {
+			return fmt.Errorf("an existing group already has the name: %v", groupName)
+		}
+
+		// use this to get the latest Group ID to automatically generate a new one
+		if groupItem.GroupID > latestID {
+			latestID = groupItem.GroupID
+		}
+	}
+
+	// Generate private token
+	privKey, privKeyErr := generatePrivateKey()
+	if privKeyErr != nil {
+		return privKeyErr
+	}
+
+	// create and append the new group
+	s.Groups = append(s.Groups, AccessGroup{
+		GroupID:           (latestID + 1),
+		Name:              groupName,
+		UserList:          []PrivateAccessUser{},
+		Roles:             []AccessRole{},
+		GroupPrivateToken: privKey,
+	})
+
+	return nil
+}
+
+// create a new user
+func (s *SystemDB) createUser(Username string, Password string) (PublicAccessUser, error) {
+	latestID := 0
+
+	// Check if the user already exists, get the latest ID
+	for _, userItem := range s.Users {
+		if userItem.Username == Username {
+			return PublicAccessUser{}, fmt.Errorf("username already exists: %v", Username)
+		}
+
+		if userItem.UserID > latestID {
+			latestID = userItem.UserID
+		}
+	}
+
+	// create a private key for the user
+	privKey, privKeyErr := generatePrivateKey()
+	if privKeyErr != nil {
+		return PublicAccessUser{}, privKeyErr
+	}
+
+	// create the new user object and append it to the system table
+	s.Users = append(s.Users, PrivateAccessUser{
+		UserID:           (latestID + 1),
+		Username:         Username,
+		Password:         Password,
+		Roles:            []AccessRole{},
+		UserPrivateToken: privKey,
+	})
+
+	// create the public key for the user using the new private key
+	pubKey, pubKeyErr := generatePublicKey(privKey)
+	if pubKeyErr != nil {
+		return PublicAccessUser{}, pubKeyErr
+	}
+
+	// return the public user object
+	return PublicAccessUser{
+		Username:    Username,
+		PublicToken: pubKey,
+	}, nil
+}
+
+// create a new role
+// ** - Still need to confirm scope
+func (s *SystemDB) createRole(roleName string, scope string, policies []AccessPolicy) error {
+	latestID := 0
+
+	// check for role duplicates with the same name and get the latest id
+	for _, roleItem := range s.Roles {
+		if roleItem.Name == roleName {
+			return fmt.Errorf("an existing role is already using the name: %v", roleName)
+		}
+
+		if roleItem.RoleID > latestID {
+			latestID = roleItem.RoleID
+		}
+	}
+
+	// check policies for existence
+	for _, specifiedPolicyItem := range policies {
+		matchingPolicyFound := false
+
+		for _, policyItem := range s.Policies {
+			if policyItem.PolicyID == specifiedPolicyItem.PolicyID {
+				matchingPolicyFound = true
+				break
+			}
+		}
+
+		if !matchingPolicyFound {
+			return fmt.Errorf("no matching policy could be found to match: %v", specifiedPolicyItem.Name)
+		}
+	}
+
+	// create and add the new role to the system db
+	s.Roles = append(s.Roles, AccessRole{
+		RoleID:   (latestID + 1),
+		Name:     roleName,
+		Scope:    scope,
+		Policies: policies,
+	})
+
+	return nil
+}
+
+// create a new policy for a set of permissions
+func (s *SystemDB) createPolicy(policyName string, perms []string) error {
+	// specify the permissions that will actually be accepted for the creation of a policy
+	acceptedPerms := []string{"PULL", "PUSH", "PUT", "DELETE"}
+	latestID := 0
+
+	// check for policy duplicates
+	for _, policyItem := range s.Policies {
+		if policyItem.Name == policyName {
+			return fmt.Errorf("an existing policy already has the name: %v", policyName)
+		}
+
+		if policyItem.PolicyID > latestID {
+			latestID = policyItem.PolicyID
+		}
+	}
+
+	// check the perm strings for the allowed actions
+	for _, permItem := range perms {
+		permAllowed := false
+
+		for _, acceptedItem := range acceptedPerms {
+			if permItem == acceptedItem {
+				permAllowed = true
+				break
+			}
+		}
+
+		if !permAllowed {
+			return fmt.Errorf("permission string not recognised: %v", permItem)
+		}
+	}
+
+	// create the policy and append it to the system db
+	s.Policies = append(s.Policies, AccessPolicy{
+		PolicyID:    (latestID + 1),
+		Name:        policyName,
+		Permissions: perms,
+	})
+
+	return nil
 }

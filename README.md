@@ -39,7 +39,7 @@ The database has layers of Role-Based Access Control added for more security aro
 Users provide individuals with scopeable access to each of the databases through a username and password. Once logged in, the user is sent back a public version of their login, to scope down data as much as possible. 
 
 ### 3.2 - Groups
-To simplify management of users and their related access, groups exist to create a logical collection of users. Groups can be assigned to roles and policies directly. A key example would be to create a group for a team, and provide them with all the same access. 
+To simplify management of users and their related access, groups exist to create a logical collection of users. Groups can be assigned to roles. A key example would be to create a group for a team, and provide them with all the same access. 
 
 ### 3.3 - Roles
 Roles serve as an easy to use medium to provide access to users and groups to a specific scope. Roles can be created, or default roles used for the management of each of the databases. By default, Root Admin, Root Writer and Root Reader are created on Database initialisation. 
