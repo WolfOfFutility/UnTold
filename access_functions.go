@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"strings"
 )
@@ -117,8 +118,6 @@ func (s *SystemDB) loadSystemDB() error {
 
 	}
 
-	fmt.Println(s.Roles)
-
 	return nil
 }
 
@@ -182,6 +181,16 @@ func (s *SystemDB) saveSystemDB() error {
 	}
 
 	return nil
+}
+
+// Close the database and remove all data
+func (s *SystemDB) close() {
+	saveErr := s.saveSystemDB()
+	if saveErr != nil {
+		log.Fatalf("failed to save the system database")
+	}
+
+	s = nil
 }
 
 // Create base policies within the system database
@@ -306,22 +315,22 @@ func (s *SystemDB) findRoleByID(roleID int) (AccessRole, error) {
 }
 
 // Confirm that the appropriate permission is applied for the specified scope
-func (r *AccessRole) confirmPermission(scope string, permission string) (bool, error) {
+func (r *AccessRole) confirmPermission(scope string, permission string) bool {
 	for _, policy := range r.Policies {
 		for _, policyPermission := range policy.Permissions {
 			if policyPermission == permission && scope == r.Scope {
-				return true, nil
+				return true
 			}
 		}
 	}
 
-	return false, nil
+	return false
 }
 
 // Assign a user to a role
 func (s *SystemDB) assignUserToRole(User PublicAccessUser, Role AccessRole) error {
 	// check user exists
-	for _, userItem := range s.Users {
+	for userIndex, userItem := range s.Users {
 		if userItem.Username == User.Username {
 
 			// check role exists
@@ -329,7 +338,7 @@ func (s *SystemDB) assignUserToRole(User PublicAccessUser, Role AccessRole) erro
 				if Role.RoleID == roleItem.RoleID {
 
 					// assign the role
-					userItem.Roles = append(userItem.Roles, roleItem)
+					s.Users[userIndex].Roles = append(s.Users[userIndex].Roles, roleItem)
 					return nil
 				}
 			}
@@ -349,11 +358,11 @@ func (s *SystemDB) assignUserToGroup(User PublicAccessUser, Group AccessGroup) e
 		if userItem.Username == User.Username {
 
 			// check group exists
-			for _, groupItem := range s.Groups {
+			for groupIndex, groupItem := range s.Groups {
 				if Group.GroupID == groupItem.GroupID {
 
 					// assign the group
-					groupItem.UserList = append(groupItem.UserList, userItem)
+					s.Groups[groupIndex].UserList = append(s.Groups[groupIndex].UserList, userItem)
 					return nil
 				}
 			}
@@ -370,7 +379,7 @@ func (s *SystemDB) assignUserToGroup(User PublicAccessUser, Group AccessGroup) e
 // assign a role to the group
 func (s *SystemDB) assignGroupToRole(Group AccessGroup, Role AccessRole) error {
 	// check user exists
-	for _, groupItem := range s.Groups {
+	for groupIndex, groupItem := range s.Groups {
 		if groupItem.GroupID == Group.GroupID {
 
 			// check role exists
@@ -385,7 +394,7 @@ func (s *SystemDB) assignGroupToRole(Group AccessGroup, Role AccessRole) error {
 					}
 
 					// if it hits here, there are no duplicates assigned to the group - assign this role to the group
-					groupItem.Roles = append(groupItem.Roles, roleItem)
+					s.Groups[groupIndex].Roles = append(s.Groups[groupIndex].Roles, roleItem)
 					return nil
 				}
 			}
@@ -400,13 +409,13 @@ func (s *SystemDB) assignGroupToRole(Group AccessGroup, Role AccessRole) error {
 }
 
 // create a new group
-func (s *SystemDB) createGroup(groupName string) error {
+func (s *SystemDB) createGroup(groupName string) (AccessGroup, error) {
 	latestID := 0
 
 	// Check for group name overlap
 	for _, groupItem := range s.Groups {
 		if groupItem.Name == groupName {
-			return fmt.Errorf("an existing group already has the name: %v", groupName)
+			return AccessGroup{}, fmt.Errorf("an existing group already has the name: %v", groupName)
 		}
 
 		// use this to get the latest Group ID to automatically generate a new one
@@ -418,19 +427,21 @@ func (s *SystemDB) createGroup(groupName string) error {
 	// Generate private token
 	privKey, privKeyErr := generatePrivateKey()
 	if privKeyErr != nil {
-		return privKeyErr
+		return AccessGroup{}, privKeyErr
 	}
 
 	// create and append the new group
-	s.Groups = append(s.Groups, AccessGroup{
+	newGroup := AccessGroup{
 		GroupID:           (latestID + 1),
 		Name:              groupName,
 		UserList:          []PrivateAccessUser{},
 		Roles:             []AccessRole{},
 		GroupPrivateToken: privKey,
-	})
+	}
 
-	return nil
+	s.Groups = append(s.Groups, newGroup)
+
+	return newGroup, nil
 }
 
 // create a new user
@@ -560,4 +571,137 @@ func (s *SystemDB) createPolicy(policyName string, perms []string) error {
 	})
 
 	return nil
+}
+
+// handle a user login, and generate a public access user object
+func (s *SystemDB) userLogin(username string, password string) (PublicAccessUser, error) {
+	for _, userItem := range s.Users {
+		if userItem.Username == username && userItem.Password == password {
+			pubKey, pubKeyErr := generatePublicKey(userItem.UserPrivateToken)
+			if pubKeyErr != nil {
+				return PublicAccessUser{}, pubKeyErr
+			}
+
+			return PublicAccessUser{
+				Username:    username,
+				PublicToken: pubKey,
+			}, nil
+		}
+	}
+
+	return PublicAccessUser{}, fmt.Errorf("the username or password was incorrect, please try again")
+}
+
+// search for a group by its name
+func (s *SystemDB) findGroupByName(groupName string) (AccessGroup, error) {
+	for _, groupItem := range s.Groups {
+		if groupItem.Name == groupName {
+			return groupItem, nil
+		}
+	}
+
+	return AccessGroup{}, fmt.Errorf("no group could be found with the name: %v", groupName)
+}
+
+// search for a group by its ID
+func (s *SystemDB) findGroupByID(groupID int) (AccessGroup, error) {
+	for _, groupItem := range s.Groups {
+		if groupItem.GroupID == groupID {
+			return groupItem, nil
+		}
+	}
+
+	return AccessGroup{}, fmt.Errorf("no group could be found with the id: %v", groupID)
+}
+
+// delete a user based on user ID
+// ** - need to add functionality unassign users from groups
+func (s *SystemDB) deleteUser(username string) error {
+	for userIndex, userItem := range s.Users {
+		if userItem.Username == username {
+			s.Users = append(s.Users[:userIndex], s.Users[(userIndex+1):]...)
+			return nil
+		}
+	}
+
+	return fmt.Errorf("no user exists with the username: %v", username)
+}
+
+// delete a role based on its ID
+// ** - need to add functionality to unassign groups and users from roles
+func (s *SystemDB) deleteRole(roleID int) error {
+	for roleIndex, roleItem := range s.Roles {
+		if roleItem.RoleID == roleID {
+			s.Roles = append(s.Roles[:roleIndex], s.Roles[(roleIndex+1):]...)
+			return nil
+		}
+	}
+
+	return fmt.Errorf("no role exists with the id: %v", roleID)
+}
+
+// delete a group based on its ID
+func (s *SystemDB) deleteGroup(groupID int) error {
+	for groupIndex, groupItem := range s.Groups {
+		if groupItem.GroupID == groupID {
+			s.Groups = append(s.Groups[:groupIndex], s.Groups[(groupIndex+1):]...)
+			return nil
+		}
+	}
+
+	return fmt.Errorf("no group exists with the id: %v", groupID)
+}
+
+// remove a user from group membership
+func (s *SystemDB) removeUserFromGroup(groupID int, username string) error {
+	for groupIndex, groupItem := range s.Groups {
+		if groupItem.GroupID == groupID {
+			for userIndex, userItem := range groupItem.UserList {
+				if userItem.Username == username {
+					s.Groups[groupIndex].UserList = append(s.Groups[groupIndex].UserList[:userIndex], s.Groups[groupIndex].UserList[(userIndex+1):]...)
+					return nil
+				}
+			}
+
+			return fmt.Errorf("no user could be found in the specified group with the username: %v", username)
+		}
+	}
+
+	return fmt.Errorf("no group could be found with the ID: %v", groupID)
+}
+
+// remove a user from a role
+func (s *SystemDB) removeUserFromRole(roleID int, username string) error {
+	for userIndex, userItem := range s.Users {
+		if userItem.Username == username {
+			for roleIndex, roleItem := range userItem.Roles {
+				if roleItem.RoleID == roleID {
+					s.Users[userIndex].Roles = append(s.Users[userIndex].Roles[:roleIndex], s.Users[userIndex].Roles[(roleIndex+1):]...)
+					return nil
+				}
+			}
+
+			return fmt.Errorf("no role could be found with an ID matching: %v", roleID)
+		}
+	}
+
+	return fmt.Errorf("no user could be found with a username matching: %v", username)
+}
+
+// remove a group from a role
+func (s *SystemDB) removeGroupFromRole(roleID int, groupID int) error {
+	for groupIndex, groupItem := range s.Groups {
+		if groupItem.GroupID == groupID {
+			for roleIndex, roleItem := range groupItem.Roles {
+				if roleItem.RoleID == roleID {
+					s.Groups[groupIndex].Roles = append(s.Groups[groupIndex].Roles[:roleIndex], s.Groups[groupIndex].Roles[(roleIndex+1):]...)
+					return nil
+				}
+			}
+
+			return fmt.Errorf("no role could be found with a matching id to: %v", roleID)
+		}
+	}
+
+	return fmt.Errorf("no group could be found with an ID that matched: %v", groupID)
 }

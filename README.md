@@ -1,5 +1,5 @@
 # Untold
-A simple OpenSource No-SQL database to empower local development of developer projects. All objects are saved to file for re-use in later iterations.
+A simple OpenSource Data Warehouse to empower local development of projects. All objects are saved to file for re-use in later iterations.
 
 This repository currently only uses base go modules - no third party open source options are used. 
 
@@ -59,9 +59,10 @@ Policies serve as a way to communicate the actual permissions being provided wit
 - Dynamic Data Masking
 - Multi-Store Replication
 - Data Transferrence to SQL and No-SQL Formats and Databases
-- Vector Database Mode
-- Matrix Database Mode
+- Vector Mode
+- Matrix Mode
 - Integration Modules
+    - Go
     - PowerShell
     - Python
     - JavaScript / TypeScript
