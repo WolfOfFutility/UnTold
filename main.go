@@ -54,13 +54,19 @@ func initSystem() (SystemDB, error) {
 	}
 
 	system := SystemDB{
-		Users:    []PrivateAccessUser{},
-		Groups:   []AccessGroup{},
-		Roles:    []AccessRole{},
-		Policies: []AccessPolicy{},
+		Users:        []PrivateAccessUser{},
+		Groups:       []AccessGroup{},
+		Roles:        []AccessRole{},
+		Policies:     []AccessPolicy{},
+		Transactions: []TransactionLog{},
 	}
 
-	system.loadSystemDB()
+	// ** - error happens here with no system tables
+	systemLoadErr := system.loadSystemDB()
+	if systemLoadErr != nil {
+		log.Printf("%v", systemLoadErr.Error())
+	}
+
 	return system, nil
 }
 
