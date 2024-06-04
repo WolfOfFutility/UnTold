@@ -296,6 +296,8 @@ func (s *SystemDB) createBaseRoles() error {
 		},
 	}
 
+	// Create some more specific base roles
+	/// Policies - C.R.U.D
 	policyReaderRole := AccessRole{
 		RoleID: 4,
 		Name:   "Policy Reader",
@@ -305,8 +307,138 @@ func (s *SystemDB) createBaseRoles() error {
 		},
 	}
 
+	policyWriterRole := AccessRole{
+		RoleID: 5,
+		Name:   "Policy Writer",
+		Scope:  "policy",
+		Policies: []AccessPolicy{
+			readerPolicy,
+			writerPolicy,
+		},
+	}
+
+	policyAdminRole := AccessRole{
+		RoleID: 6,
+		Name:   "Policy Admin",
+		Scope:  "policy",
+		Policies: []AccessPolicy{
+			readerPolicy,
+			writerPolicy,
+			removerPolicy,
+		},
+	}
+
+	/// Roles - C.R.U.D
+	roleReaderRole := AccessRole{
+		RoleID: 7,
+		Name:   "Role Reader",
+		Scope:  "role",
+		Policies: []AccessPolicy{
+			readerPolicy,
+		},
+	}
+
+	roleWriterRole := AccessRole{
+		RoleID: 8,
+		Name:   "Role Writer",
+		Scope:  "role",
+		Policies: []AccessPolicy{
+			readerPolicy,
+			writerPolicy,
+		},
+	}
+
+	roleAdminRole := AccessRole{
+		RoleID: 9,
+		Name:   "Role Admin",
+		Scope:  "role",
+		Policies: []AccessPolicy{
+			readerPolicy,
+			writerPolicy,
+			removerPolicy,
+		},
+	}
+
+	/// Groups - C.R.U.D
+	groupReaderRole := AccessRole{
+		RoleID: 10,
+		Name:   "Group Reader",
+		Scope:  "group",
+		Policies: []AccessPolicy{
+			readerPolicy,
+		},
+	}
+
+	groupWriterRole := AccessRole{
+		RoleID: 11,
+		Name:   "Group Writer",
+		Scope:  "group",
+		Policies: []AccessPolicy{
+			readerPolicy,
+			writerPolicy,
+		},
+	}
+
+	groupAdminRole := AccessRole{
+		RoleID: 12,
+		Name:   "Group Admin",
+		Scope:  "group",
+		Policies: []AccessPolicy{
+			readerPolicy,
+			writerPolicy,
+			removerPolicy,
+		},
+	}
+
+	/// Users - C.R.U.D
+	userReaderRole := AccessRole{
+		RoleID: 13,
+		Name:   "User Reader",
+		Scope:  "user",
+		Policies: []AccessPolicy{
+			readerPolicy,
+		},
+	}
+
+	userWriterRole := AccessRole{
+		RoleID: 14,
+		Name:   "User Writer",
+		Scope:  "user",
+		Policies: []AccessPolicy{
+			readerPolicy,
+			writerPolicy,
+		},
+	}
+
+	userAdminRole := AccessRole{
+		RoleID: 15,
+		Name:   "User Admin",
+		Scope:  "user",
+		Policies: []AccessPolicy{
+			readerPolicy,
+			writerPolicy,
+			removerPolicy,
+		},
+	}
+
 	// Append the roles to the System DB
-	s.Roles = append(s.Roles, rootAdminRole, rootReaderRole, rootWriterRole, policyReaderRole)
+	s.Roles = append(s.Roles,
+		rootAdminRole,
+		rootReaderRole,
+		rootWriterRole,
+		policyReaderRole,
+		policyWriterRole,
+		policyAdminRole,
+		groupReaderRole,
+		groupWriterRole,
+		groupAdminRole,
+		userReaderRole,
+		userWriterRole,
+		userAdminRole,
+		roleReaderRole,
+		roleWriterRole,
+		roleAdminRole,
+	)
 
 	return nil
 }

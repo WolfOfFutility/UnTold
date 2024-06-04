@@ -811,6 +811,29 @@ func Test_validateAction(t *testing.T) {
 	})
 }
 
+// func Test_BalloonBenchmarking(t *testing.T) {
+// 	// initialise the system
+// 	systemDB, sysErr := initSystem()
+// 	if sysErr != nil {
+// 		log.Println(sysErr)
+// 	}
+
+// 	userObj, userLoginErr := systemDB.userLogin("tester", os.Getenv("TestK"))
+// 	if userLoginErr != nil {
+// 		t.Fatalf("Incorrect error while logging in, got: %v", userLoginErr.Error())
+// 	}
+
+// 	for i := 0; i < 1000; i++ {
+// 		_, createUserErr := systemDB.createUser(fmt.Sprintf("testuser-%v", i), generatePassword(), userObj)
+// 		if createUserErr != nil {
+// 			t.Fatalf("Failed to bulk create users")
+// 			return
+// 		}
+// 	}
+
+// 	defer systemDB.close()
+// }
+
 // test the findTransactionLogs function
 func Test_findTransactionLogs(t *testing.T) {
 	// initialise the system
@@ -819,7 +842,27 @@ func Test_findTransactionLogs(t *testing.T) {
 		log.Println(sysErr)
 	}
 
+	log.Printf("%v", len(systemDB.Users))
+
 	systemDB.findTransactionLogs()
 }
 
-func Test_cleanup(t *testing.T) {}
+func Test_cleanup(t *testing.T) {
+	systemDB, sysErr := initSystem()
+	if sysErr != nil {
+		t.Fatalf("Unexpected error, got: %v", sysErr.Error())
+	}
+
+	// login to the testing user object
+	userObj, userLoginErr := systemDB.userLogin("tester", os.Getenv("TestK"))
+	if userLoginErr != nil {
+		t.Fatalf("Incorrect error while logging in, got: %v", userLoginErr.Error())
+	}
+
+	deleteUserErr := systemDB.deleteUser(userObj.Username, userObj)
+	if deleteUserErr != nil {
+		t.Fatalf("Failed to delete test user")
+	}
+
+	defer systemDB.close()
+}
