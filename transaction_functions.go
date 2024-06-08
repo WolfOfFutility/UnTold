@@ -38,6 +38,6 @@ func (s *SystemDB) findTransactionLogs(args ...string) {
 		log.Println(strings.Replace(argItem, " ", "", -1))
 	}
 
-	//log.Printf("%v", s.Transactions)
+	// log.Printf("%v", s.Transactions)
 	log.Printf("%v transactions found.", len(s.Transactions))
 }

@@ -13,24 +13,24 @@ import (
 const keyPath = "keys/main.dat"
 
 type DB struct {
-	Name string
+	Name   string
 	Tables []DBTable
 }
 
 type DBTable struct {
-	Name string
-	ColumnConfig []ColumnConfig
+	Name                 string
+	ColumnConfig         []ColumnConfig
 	PrimaryKeyColumnName string
 	ForeignKeyColumnName *string
 	AutoIncrementPrimary bool
-	NextID int
-	RowValues []RowValue
+	NextID               int
+	RowValues            []RowValue
 }
 
 type ColumnConfig struct {
 	ColumnName string
 	ColumnType string
-	Nullable bool
+	Nullable   bool
 }
 
 // This could probably be removed, actually
@@ -39,24 +39,24 @@ type RowValue struct {
 }
 
 type DBQuery struct {
-	TableName string					// `json:"tableName"`
-	ColumnNames []string				// `json:"columnNames"`
-	Operation string					// `json:"operation"`
-	ArgumentClause []map[string]any 	// `json:"arugmentClause"`
-	OptionsClause map[string]any
+	TableName      string           // `json:"tableName"`
+	ColumnNames    []string         // `json:"columnNames"`
+	Operation      string           // `json:"operation"`
+	ArgumentClause []map[string]any // `json:"arugmentClause"`
+	OptionsClause  map[string]any
 }
 
 // This should be used for the Argument Clause of a query
 type ArgumentClause struct {
-	Left string
+	Left     string
 	Operator string
-	Right string
+	Right    string
 }
 
 // Wraps up the database, saves it to file and wipes the memory
 func (db *DB) Close() {
 	db.saveTables()
-	db = nil
+	db = &DB{}
 }
 
 // Create a table within a DB
@@ -101,7 +101,7 @@ func (db *DB) saveTables() {
 
 // Load table to DB from .DAT
 // ** This could probably be improved to only load specific data as needed, or allow for concurrency
-func (db *DB) loadTable(tableName string) (error) {
+func (db *DB) loadTable(tableName string) error {
 	content, err := os.ReadFile(fmt.Sprintf("stores/%v.dat", tableName))
 	if err != nil {
 		return err
@@ -143,32 +143,32 @@ func (db *DB) getTable(tableName string) (int, error) {
 func (db *DB) createTable(tableName string, columnConfig []map[string]any, PrimaryKeyColumnName string, autoIncrementPrimary bool) {
 	configItems := []ColumnConfig{}
 
-	// Set column config 
+	// Set column config
 	for _, value := range columnConfig {
 		newConfigItem := ColumnConfig{
 			ColumnName: value["ColumnName"].(string),
 			ColumnType: value["ColumnType"].(string),
-			Nullable: value["Nullable"].(bool),
+			Nullable:   value["Nullable"].(bool),
 		}
 
 		configItems = append(configItems, newConfigItem)
 	}
-	
+
 	// Set the database table and mount it
 	table := DBTable{
-		Name: tableName,
-		ColumnConfig: configItems,
+		Name:                 tableName,
+		ColumnConfig:         configItems,
 		PrimaryKeyColumnName: PrimaryKeyColumnName,
 		AutoIncrementPrimary: autoIncrementPrimary,
-		NextID: 1,
-		RowValues: []RowValue{},
+		NextID:               1,
+		RowValues:            []RowValue{},
 	}
 
 	db.attachTable(table)
 }
 
 // Take a Map / Object of an example row and create a table from it
-func (db *DB) createTableFromMap(tableName string, primaryColumnName string, autoIncrementPrimary bool, exampleMap map[string]any) (error) {
+func (db *DB) createTableFromMap(tableName string, primaryColumnName string, autoIncrementPrimary bool, exampleMap map[string]any) error {
 	columnConfigList := []ColumnConfig{}
 	primaryChecks := 0
 
@@ -187,12 +187,12 @@ func (db *DB) createTableFromMap(tableName string, primaryColumnName string, aut
 
 	// Set the database table and mount it
 	table := DBTable{
-		Name: tableName,
-		ColumnConfig: columnConfigList,
+		Name:                 tableName,
+		ColumnConfig:         columnConfigList,
 		PrimaryKeyColumnName: primaryColumnName,
 		AutoIncrementPrimary: autoIncrementPrimary,
-		NextID: 1,
-		RowValues: []RowValue{},
+		NextID:               1,
+		RowValues:            []RowValue{},
 	}
 
 	db.attachTable(table)
@@ -201,7 +201,7 @@ func (db *DB) createTableFromMap(tableName string, primaryColumnName string, aut
 }
 
 // Runs a query, breaks it down and calls the appropriate function as needed
-func (db *DB) runQuery(queryStr string) (error) {
+func (db *DB) runQuery(queryStr string) error {
 	// Breakdown the query into elements
 	query, err := queryBreakdown(queryStr)
 	if err != nil {
@@ -239,7 +239,7 @@ func (db *DB) runQuery(queryStr string) (error) {
 		}
 
 		log.Println("Added table row successfully.")
-	case "PUT" :
+	case "PUT":
 		updateErr := db.Tables[tableIndex].updateTableRow(query)
 		if updateErr != nil {
 			return updateErr
@@ -254,7 +254,7 @@ func (db *DB) runQuery(queryStr string) (error) {
 		}
 
 		log.Println("Removed table row successfully.")
-	default :
+	default:
 		return fmt.Errorf("%v is an unsupported operation type", query.Operation)
 	}
 
@@ -284,7 +284,7 @@ func (r *RowValue) getRowValue(columnNamesToInclude []string) (map[string]any, [
 }
 
 // Returns a list of the names of the columns to include based on the options argument in a query
-func (t *DBTable) getColumnHeaders(columnNamesToInclude []string) ([]string) {
+func (t *DBTable) getColumnHeaders(columnNamesToInclude []string) []string {
 	headers := []string{}
 	filteredColumns := []string{}
 
@@ -305,7 +305,7 @@ func (t *DBTable) getColumnHeaders(columnNamesToInclude []string) ([]string) {
 
 // Adds a new table row to the table
 // ** This might be able to be improved by only writing bytes at a certain location, instead of parsing the whole file
-func (table *DBTable) addTableRow(cv map[string]any) (error) {
+func (table *DBTable) addTableRow(cv map[string]any) error {
 	newRow := RowValue{
 		ColumnValues: map[string]any{},
 	}
@@ -335,8 +335,9 @@ func (table *DBTable) addTableRow(cv map[string]any) (error) {
 // Updates table row based on values
 // ** This could probably be optimised quite a lot, given how many loops this relies on
 // ** This might need more error handling included
-func (table *DBTable) updateTableRow(query DBQuery) (error) {
-	modifiedValues := 0;
+// ** Arguments seems to only work for string-base values, because of the indexing
+func (table *DBTable) updateTableRow(query DBQuery) error {
+	modifiedValues := 0
 
 	for _, rowValue := range table.RowValues {
 
@@ -352,11 +353,11 @@ func (table *DBTable) updateTableRow(query DBQuery) (error) {
 							}
 
 							if modifiedValues >= len(query.OptionsClause) {
-								break;
+								break
 							}
 						}
 					}
-				default :
+				default:
 					return fmt.Errorf("invalid operator was supplied to update table row: %v", argumentValue["Operator"])
 				}
 			}
@@ -372,22 +373,22 @@ func (table *DBTable) updateTableRow(query DBQuery) (error) {
 							}
 
 							if modifiedValues >= len(query.OptionsClause) {
-								break;
+								break
 							}
 						}
 					}
-				default :
+				default:
 					return fmt.Errorf("invalid operator was supplied to update table row: %v", argumentValue["Operator"])
 				}
 			}
 
 			if modifiedValues >= len(query.OptionsClause) {
-				break;
+				break
 			}
 		}
 
 		if modifiedValues >= len(query.OptionsClause) {
-			break;
+			break
 		}
 	}
 
@@ -397,8 +398,9 @@ func (table *DBTable) updateTableRow(query DBQuery) (error) {
 // Remove a table row based on arguments
 // ** This could probably be optimised quite a lot, it relies on a few loops
 // ** This might need more error handling included
-func (table *DBTable) removeTableRow(query DBQuery) (error) {
-	modifiedValues := 0;
+// ** Arguments seems to only work for string-base values, because of the indexing
+func (table *DBTable) removeTableRow(query DBQuery) error {
+	modifiedValues := 0
 
 	for rowIndex, rowValue := range table.RowValues {
 
@@ -409,9 +411,9 @@ func (table *DBTable) removeTableRow(query DBQuery) (error) {
 					if rowValue.ColumnValues[argumentValue["Left"].(string)] == argumentValue["Right"] {
 						table.RowValues = append(table.RowValues[:rowIndex], table.RowValues[rowIndex+1:]...)
 						modifiedValues = modifiedValues + 1
-						break;
+						break
 					}
-				default :
+				default:
 					return fmt.Errorf("invalid operator was supplied to update table row: %v", argumentValue["Operator"])
 				}
 			}
@@ -422,20 +424,20 @@ func (table *DBTable) removeTableRow(query DBQuery) (error) {
 					if rowValue.ColumnValues[argumentValue["Right"].(string)] == argumentValue["Left"] {
 						table.RowValues = append(table.RowValues[:rowIndex], table.RowValues[rowIndex+1:]...)
 						modifiedValues = modifiedValues + 1
-						break;
+						break
 					}
-				default :
+				default:
 					return fmt.Errorf("invalid operator was supplied to update table row: %v", argumentValue["Operator"])
 				}
 			}
 
 			if modifiedValues >= len(query.OptionsClause) {
-				break;
+				break
 			}
 		}
 
 		if modifiedValues >= len(query.OptionsClause) {
-			break;
+			break
 		}
 	}
 
@@ -443,7 +445,7 @@ func (table *DBTable) removeTableRow(query DBQuery) (error) {
 		return fmt.Errorf("matching rows could not be found - no rows were deleted")
 	} else {
 		return nil
-	}	
+	}
 }
 
 // Break down a query string into its base elements for re-use later
@@ -460,7 +462,7 @@ func queryBreakdown(query string) (DBQuery, error) {
 	// specify different operation types and check that the query contains them
 	// check the required clauses for the type, throw errors if needed
 	operationTypes := []string{"PULL", "PUSH", "PUT", "DELETE"}
-	
+
 	if Contains(operationTypes, queryArr[0]) {
 		currentOperation = queryArr[0]
 		requiredStatements := []string{}
@@ -475,7 +477,7 @@ func queryBreakdown(query string) (DBQuery, error) {
 			requiredStatements = []string{"TO", "WHERE"}
 		case "DELETE":
 			requiredStatements = []string{"FROM"}
-		default :
+		default:
 			return DBQuery{}, fmt.Errorf("%v is not a valid operation type", currentOperation)
 		}
 
@@ -497,11 +499,11 @@ func queryBreakdown(query string) (DBQuery, error) {
 				if Contains([]string{"FROM"}, queryArr[i]) {
 					break
 				} else {
-					cleanString := strings.Replace(queryArr[i], ",", "", -1) 
+					cleanString := strings.Replace(queryArr[i], ",", "", -1)
 					columns = append(columns, cleanString)
 				}
 			}
-		
+
 		case "PUSH", "PUT":
 			for i := index + 1; i < len(queryArr); i++ {
 				if Contains([]string{"TO"}, queryArr[i]) {
@@ -513,17 +515,17 @@ func queryBreakdown(query string) (DBQuery, error) {
 				/// Edge cases included for <name>= <value> and <name> =<value>
 				/// *** More edge cases should be included
 				if strings.Contains(queryArr[i], "=") && len(queryArr[i]) > 1 && !(strings.Contains(queryArr[i], ",")) {
-					optionsClause[strings.Replace(queryArr[i], "=", "", -1)] = queryArr[i + 1]
+					optionsClause[strings.Replace(queryArr[i], "=", "", -1)] = queryArr[i+1]
 				} else if strings.Contains(queryArr[i], "=") && len(queryArr[i]) > 1 && (strings.Contains(queryArr[i], ",")) {
-					optionsClause[queryArr[i - 1]] = strings.Replace(strings.Replace(queryArr[i], "=", "", -1), ",", "", -1)
-				} else if queryArr[i + 1] == "=" {
-					optionsClause[queryArr[i]] = strings.Replace(queryArr[i + 2], ",", "", -1)
+					optionsClause[queryArr[i-1]] = strings.Replace(strings.Replace(queryArr[i], "=", "", -1), ",", "", -1)
+				} else if queryArr[i+1] == "=" {
+					optionsClause[queryArr[i]] = strings.Replace(queryArr[i+2], ",", "", -1)
 				}
 			}
-		
-		case "FROM", "TO": 
+
+		case "FROM", "TO":
 			targetTable = queryArr[(index + 1)]
-		
+
 		case "WHERE":
 			for i := index + 1; i < len(queryArr); i++ {
 				if Contains([]string{"SORT"}, queryArr[i]) {
@@ -533,10 +535,10 @@ func queryBreakdown(query string) (DBQuery, error) {
 					newClause := make(map[string]any)
 					cleanString := strings.Replace(queryArr[i], ",", "", -1)
 
-					if Contains([]string{"=", "%"}, cleanString) && strings.Replace(queryArr[i - 1], ",", "", -1) != "WHERE" {
-						newClause["Left"] = strings.Replace(queryArr[i - 1], ",", "", -1)
+					if Contains([]string{"=", "%"}, cleanString) && strings.Replace(queryArr[i-1], ",", "", -1) != "WHERE" {
+						newClause["Left"] = strings.Replace(queryArr[i-1], ",", "", -1)
 						newClause["Operator"] = cleanString
-						newClause["Right"] = strings.Replace(queryArr[i + 1], ",", "", -1)
+						newClause["Right"] = strings.Replace(queryArr[i+1], ",", "", -1)
 						argumentClause = append(argumentClause, newClause)
 					}
 				}
@@ -548,7 +550,7 @@ func queryBreakdown(query string) (DBQuery, error) {
 }
 
 // returns joined string with an array of any input, gets around the strict parsing that strings.Join() has
-func getJoinedString(arr []any, joiner string) (string) {
+func getJoinedString(arr []any, joiner string) string {
 	str := ""
 
 	for index, value := range arr {
@@ -576,7 +578,7 @@ func printTableOutput(table DBTable, query DBQuery) {
 }
 
 // Simple contains function for the array string type
-func Contains(a []string, substring string) (bool) {
+func Contains(a []string, substring string) bool {
 	for _, value := range a {
 		if value == substring {
 			return true
