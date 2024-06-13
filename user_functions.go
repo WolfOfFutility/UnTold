@@ -1,24 +1,19 @@
 package main
 
 import (
-	"strings"
-	"fmt"
 	"encoding/base64"
+	"fmt"
+	"strings"
 )
 
-type PreparedUserAuth struct {
-	Username string
-	PublicToken string
-}
-
 type UserAuth struct {
-	Username string
+	Username    string
 	PublicToken string
 }
 
 type User struct {
-	Username string
-	Password string
+	Username     string
+	Password     string
 	PrivateToken string
 }
 
@@ -28,7 +23,7 @@ type UserLogin struct {
 }
 
 // Converts the UserObject into a map
-func (u *User) convertToMap() (map[string]any){
+func (u *User) convertToMap() map[string]any {
 	newMap := map[string]any{}
 	newMap["Username"] = u.Username
 	newMap["Password"] = u.Password
@@ -37,60 +32,35 @@ func (u *User) convertToMap() (map[string]any){
 	return newMap
 }
 
-// Packages a UserAuth object into a PreparedUserAuth object to allow for base64 encoding to be sent
-func (u *UserAuth) pack() (PreparedUserAuth) {
-	pubKeyStr := base64.StdEncoding.EncodeToString([]byte(u.PublicToken))
-
-	return PreparedUserAuth{
-		Username: u.Username,
-		PublicToken: pubKeyStr,
-	}
-}
-
-// Unpacks a PreparedUserAuth object back into a UserAuth object to allow for decoding to be sent
-func (u *PreparedUserAuth) unpack() (UserAuth, error) {
-	// Convert PublicToken back from Base64
-	data, err := base64.StdEncoding.DecodeString(u.PublicToken)
-	if err != nil {
-		return UserAuth{}, err
-	}
-
-	// Return UserAuth
-	return UserAuth{
-		Username: u.Username,
-		PublicToken: string(data),
-	}, nil
-}
-
 // Creates a new user, will create a new user system table if one doesn't exist
-func createUser(newUser UserLogin) (error) {
+func createUser(newUser UserLogin) error {
 	db := DB{}
 
 	//Loads the Users system table
 	//If one doesn't exist, make one
 	loadTableErr := db.loadTable("Users")
 	if loadTableErr != nil {
-		if strings.Contains(loadTableErr.Error(), "cannot find the file") { 
+		if strings.Contains(loadTableErr.Error(), "cannot find the file") {
 			columns := []map[string]any{
 				{
 					"ColumnName": "User_ID",
 					"ColumnType": "int",
-					"Nullable": false,
+					"Nullable":   false,
 				},
 				{
 					"ColumnName": "Username",
 					"ColumnType": "string",
-					"Nullable": false,
+					"Nullable":   false,
 				},
 				{
 					"ColumnName": "Password",
 					"ColumnType": "string",
-					"Nullable": false,
+					"Nullable":   false,
 				},
 				{
 					"ColumnName": "PrivateToken",
 					"ColumnType": "[]byte",
-					"Nullable": false,
+					"Nullable":   false,
 				},
 			}
 
@@ -116,8 +86,8 @@ func createUser(newUser UserLogin) (error) {
 
 	// Generate the user object
 	userObj := User{
-		Username: newUser.Username,
-		Password: newUser.Password,
+		Username:     newUser.Username,
+		Password:     newUser.Password,
 		PrivateToken: privKeyStr,
 	}
 
@@ -163,8 +133,8 @@ func userLogin(login UserLogin) (UserAuth, error) {
 			}
 
 			// returns a user auth object with the username and the public key
-			return UserAuth {
-				Username: value.ColumnValues["Username"].(string),
+			return UserAuth{
+				Username:    value.ColumnValues["Username"].(string),
 				PublicToken: string(pubKey),
 			}, nil
 		}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -8,6 +9,11 @@ import (
 	"os"
 	"strings"
 )
+
+type TransitAccessUser struct {
+	Username    string
+	PublicToken string
+}
 
 type PublicAccessUser struct {
 	Username    string
@@ -1248,4 +1254,29 @@ func generatePassword() string {
 	}
 
 	return string(b)
+}
+
+// Packages a UserAuth object into a PreparedUserAuth object to allow for base64 encoding to be sent
+func (u *PublicAccessUser) pack() TransitAccessUser {
+	pubKeyStr := base64.StdEncoding.EncodeToString([]byte(u.PublicToken))
+
+	return TransitAccessUser{
+		Username:    u.Username,
+		PublicToken: pubKeyStr,
+	}
+}
+
+// Unpacks a PreparedUserAuth object back into a UserAuth object to allow for decoding to be sent
+func (u *TransitAccessUser) unpack() (PublicAccessUser, error) {
+	// Convert PublicToken back from Base64
+	data, err := base64.StdEncoding.DecodeString(u.PublicToken)
+	if err != nil {
+		return PublicAccessUser{}, err
+	}
+
+	// Return UserAuth
+	return PublicAccessUser{
+		Username:    u.Username,
+		PublicToken: data,
+	}, nil
 }

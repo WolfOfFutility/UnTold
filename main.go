@@ -71,7 +71,8 @@ func initSystem() (SystemDB, error) {
 }
 
 func main() {
-	initSystem()
+	startServer()
+	// initSystem()
 	// db := DB{}
 	// defer db.Close()
 
