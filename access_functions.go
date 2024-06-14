@@ -190,6 +190,8 @@ func (s *SystemDB) saveSystemDB() error {
 			return fileErr
 		}
 
+		defer file.Close()
+
 		ekerr := generateEncryptionKey(keyPath)
 		if ekerr != nil {
 			return ekerr
@@ -205,7 +207,6 @@ func (s *SystemDB) saveSystemDB() error {
 			return fileWriteErr
 		}
 
-		defer file.Close()
 	}
 
 	return nil
@@ -256,16 +257,22 @@ func (s *SystemDB) createBasePolicies() {
 
 // Create base roles within the system database
 func (s *SystemDB) createBaseRoles() error {
-	// Find the base policies
-	readerPolicy, readerPolicyErr := s.findPolicyByName("Reader", PublicAccessUser{Username: "system", PublicToken: []byte{}})
-	writerPolicy, writerPolicyErr := s.findPolicyByName("Writer", PublicAccessUser{Username: "system", PublicToken: []byte{}})
-	removerPolicy, removerPolicyErr := s.findPolicyByName("Remover", PublicAccessUser{Username: "system", PublicToken: []byte{}})
+	readerPolicy := AccessPolicy{
+		PolicyID:    1,
+		Name:        "Reader",
+		Permissions: []string{"PULL"},
+	}
 
-	// Iterate over each of them to send the appropriate error
-	for _, value := range []error{readerPolicyErr, writerPolicyErr, removerPolicyErr} {
-		if value != nil {
-			return value
-		}
+	writerPolicy := AccessPolicy{
+		PolicyID:    2,
+		Name:        "Writer",
+		Permissions: []string{"PUSH", "PUT"},
+	}
+
+	removerPolicy := AccessPolicy{
+		PolicyID:    3,
+		Name:        "Remover",
+		Permissions: []string{"DELETE"},
 	}
 
 	// Create each of the roles at a root scope

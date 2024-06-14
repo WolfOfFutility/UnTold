@@ -78,6 +78,8 @@ func (db *DB) saveTables() {
 			fmt.Println(err)
 		}
 
+		defer file.Close()
+
 		ekerr := generateEncryptionKey(keyPath)
 		if ekerr != nil {
 			fmt.Println(ekerr)
@@ -94,8 +96,6 @@ func (db *DB) saveTables() {
 		if err != nil {
 			fmt.Println(fileWriteErr)
 		}
-
-		defer file.Close()
 	}
 }
 

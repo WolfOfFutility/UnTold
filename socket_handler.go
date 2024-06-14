@@ -42,7 +42,7 @@ func validatePayload(payload map[string]any, indexes map[string]string) error {
 			_, ok = payload[name].(string)
 
 		case "int":
-			_, ok = payload[name].(int)
+			_, ok = payload[name].(float64)
 
 		case "bool":
 			_, ok = payload[name].(bool)
@@ -70,16 +70,28 @@ func validatePayload(payload map[string]any, indexes map[string]string) error {
 
 // As a server, listen for incoming connections
 func startServer() {
+	var ok bool
 	untold := Untold{}
+
+	initErr := untold.Init()
+	if initErr != nil {
+		log.Fatalf(initErr.Error())
+	}
+
 	createSystemUserErr := untold.system.createSystemUser()
 
 	if createSystemUserErr != nil {
 		log.Fatalf(createSystemUserErr.Error())
 	}
 
+	// handle the creation of a default user to use initially
 	_, createUserErr := untold.system.createUser("admin1", "admin", PublicAccessUser{Username: "system", PublicToken: []byte{}})
 	if createUserErr != nil {
-		log.Fatalf(createUserErr.Error())
+		if createUserErr.Error() != fmt.Errorf("username already exists: %v", "admin1").Error() {
+			log.Fatalf(createUserErr.Error())
+		}
+	} else {
+		untold.Save()
 	}
 
 	// Listen for incoming connections on port 8080
@@ -95,8 +107,16 @@ func startServer() {
 				continue
 			}
 
+			new_channel := make(chan Untold)
+
 			// Handle the connection in a new goroutine
-			go handleConnection(conn, untold)
+			go handleConnection(conn, new_channel)
+
+			untold, ok = <-new_channel
+
+			if !ok {
+				log.Fatalf(fmt.Errorf("failed to handle channel").Error())
+			}
 		}
 	}
 
@@ -104,7 +124,7 @@ func startServer() {
 }
 
 // As a server, handle a connection
-func handleConnection(connection net.Conn, untold Untold) {
+func handleConnection(connection net.Conn, channel chan Untold) {
 	// Close the connection when we're done
 	defer connection.Close()
 
@@ -115,7 +135,7 @@ func handleConnection(connection net.Conn, untold Untold) {
 		log.Println(err)
 		connection.Write([]byte(err.Error()))
 	} else {
-		response, responseErr := handleClientRequest([]byte(buf[:bitSize]), untold)
+		response, responseErr := handleClientRequest([]byte(buf[:bitSize]), channel)
 
 		if responseErr != nil {
 			connection.Write([]byte(responseErr.Error()))
@@ -123,15 +143,19 @@ func handleConnection(connection net.Conn, untold Untold) {
 			connection.Write(response)
 		}
 	}
-
-	untold.Save()
 }
 
 // handle incoming client requests
-func handleClientRequest(requestData []byte, untold Untold) ([]byte, error) {
+func handleClientRequest(requestData []byte, channel chan Untold) ([]byte, error) {
 	var requestObj GeneralServerRequest
 	var response []byte
 	var responseErr error
+
+	untold := Untold{}
+	untoldInitErr := untold.Init()
+	if untoldInitErr != nil {
+		log.Fatalf(untoldInitErr.Error())
+	}
 
 	unmarshallErr := json.Unmarshal(requestData, &requestObj)
 
@@ -154,15 +178,6 @@ func handleClientRequest(requestData []byte, untold Untold) ([]byte, error) {
 				requestObj.Payload["username"].(string),
 				requestObj.Payload["password"].(string),
 			)
-
-			log.Println("Usernames:")
-			for _, userValue := range untold.system.Users {
-				log.Println(userValue.Username)
-			}
-
-			log.Println("\nLogin:")
-			log.Println(requestObj.Payload["username"].(string))
-			log.Println(requestObj.Payload["password"].(string))
 
 			if userLoginErr != nil {
 				log.Printf("user login err: %v", userLoginErr.Error())
@@ -330,7 +345,7 @@ func handleClientRequest(requestData []byte, untold Untold) ([]byte, error) {
 		if validateErr != nil {
 			response, responseErr = nil, validateErr
 		} else {
-			numRoleAssignments, roleAssignmentErr := untold.AddGroupToRole(requestObj.Payload["groupID"].(int), requestObj.Payload["roleID"].(int))
+			numRoleAssignments, roleAssignmentErr := untold.AddGroupToRole(int(requestObj.Payload["groupID"].(float64)), int(requestObj.Payload["roleID"].(float64)))
 			response, responseErr = validateOutput(roleAssignmentErr, numRoleAssignments, fmt.Errorf("no roles were assigned"), fmt.Sprintf("%v roles successfully assigned to groups", numRoleAssignments))
 		}
 
@@ -343,7 +358,7 @@ func handleClientRequest(requestData []byte, untold Untold) ([]byte, error) {
 		if validateErr != nil {
 			response, responseErr = nil, validateErr
 		} else {
-			numRoleAssignments, roleAssignmentErr := untold.AddUserToRole(requestObj.Payload["username"].(string), requestObj.Payload["roleID"].(int))
+			numRoleAssignments, roleAssignmentErr := untold.AddUserToRole(requestObj.Payload["username"].(string), int(requestObj.Payload["roleID"].(float64)))
 			response, responseErr = validateOutput(roleAssignmentErr, numRoleAssignments, fmt.Errorf("no roles were assigned"), fmt.Sprintf("%v roles successfully assigned to user", numRoleAssignments))
 		}
 
@@ -356,7 +371,7 @@ func handleClientRequest(requestData []byte, untold Untold) ([]byte, error) {
 		if validateErr != nil {
 			response, responseErr = nil, validateErr
 		} else {
-			numGroupAssignments, groupAssignmentErr := untold.AddUserToGroup(requestObj.Payload["username"].(string), requestObj.Payload["groupID"].(int))
+			numGroupAssignments, groupAssignmentErr := untold.AddUserToGroup(requestObj.Payload["username"].(string), int(requestObj.Payload["groupID"].(float64)))
 			response, responseErr = validateOutput(groupAssignmentErr, numGroupAssignments, fmt.Errorf("no users were assigned to the group"), fmt.Sprintf("%v users successfully assigned to group", numGroupAssignments))
 		}
 
@@ -369,7 +384,7 @@ func handleClientRequest(requestData []byte, untold Untold) ([]byte, error) {
 		if validateErr != nil {
 			response, responseErr = nil, validateErr
 		} else {
-			numRemoves, removeAssignErr := untold.RemoveUserFromGroup(requestObj.Payload["username"].(string), requestObj.Payload["groupID"].(int))
+			numRemoves, removeAssignErr := untold.RemoveUserFromGroup(requestObj.Payload["username"].(string), int(requestObj.Payload["groupID"].(float64)))
 			response, responseErr = validateOutput(removeAssignErr, numRemoves, fmt.Errorf("no users were removed from groups"), fmt.Sprintf("%v users were removed from the group", numRemoves))
 		}
 
@@ -382,7 +397,7 @@ func handleClientRequest(requestData []byte, untold Untold) ([]byte, error) {
 		if validateErr != nil {
 			response, responseErr = nil, validateErr
 		} else {
-			numRemoves, removeAssignErr := untold.RemoveUserFromRole(requestObj.Payload["roleID"].(int), requestObj.Payload["username"].(string))
+			numRemoves, removeAssignErr := untold.RemoveUserFromRole(int(requestObj.Payload["roleID"].(float64)), requestObj.Payload["username"].(string))
 			response, responseErr = validateOutput(removeAssignErr, numRemoves, fmt.Errorf("no users were removed from roles"), fmt.Sprintf("%v users were removed from the role", numRemoves))
 		}
 
@@ -395,7 +410,7 @@ func handleClientRequest(requestData []byte, untold Untold) ([]byte, error) {
 		if validateErr != nil {
 			response, responseErr = nil, validateErr
 		} else {
-			numRemoves, removeAssignErr := untold.RemoveGroupFromRole(requestObj.Payload["roleID"].(int), requestObj.Payload["groupID"].(int))
+			numRemoves, removeAssignErr := untold.RemoveGroupFromRole(int(requestObj.Payload["roleID"].(float64)), int(requestObj.Payload["groupID"].(float64)))
 			response, responseErr = validateOutput(removeAssignErr, numRemoves, fmt.Errorf("no groups were removed from roles"), fmt.Sprintf("%v groups were removed from the role", numRemoves))
 		}
 
@@ -419,7 +434,7 @@ func handleClientRequest(requestData []byte, untold Untold) ([]byte, error) {
 		if validateErr != nil {
 			response, responseErr = nil, validateErr
 		} else {
-			numGroups, deleteGroupErr := untold.DeleteGroup(requestObj.Payload["groupID"].(int))
+			numGroups, deleteGroupErr := untold.DeleteGroup(int(requestObj.Payload["groupID"].(float64)))
 			response, responseErr = validateOutput(deleteGroupErr, numGroups, fmt.Errorf("no groups were deleted"), fmt.Sprintf("%v groups were successfully deleted", numGroups))
 		}
 
@@ -431,7 +446,7 @@ func handleClientRequest(requestData []byte, untold Untold) ([]byte, error) {
 		if validateErr != nil {
 			response, responseErr = nil, validateErr
 		} else {
-			numRoles, deleteRoleErr := untold.DeleteRole(requestObj.Payload["roleID"].(int))
+			numRoles, deleteRoleErr := untold.DeleteRole(int(requestObj.Payload["roleID"].(float64)))
 			response, responseErr = validateOutput(deleteRoleErr, numRoles, fmt.Errorf("no roles were deleted"), fmt.Sprintf("%v roles were successfully deleted", numRoles))
 		}
 
@@ -447,6 +462,52 @@ func handleClientRequest(requestData []byte, untold Untold) ([]byte, error) {
 			response, responseErr = validateOutput(deleteTableErr, numTables, fmt.Errorf("no tables were deleted"), fmt.Sprintf("%v tables were successfully deleted", numTables))
 		}
 
+	case "pull_group":
+		validateErr := validatePayload(requestObj.Payload, map[string]string{
+			"groupName": "string",
+		})
+
+		if validateErr != nil {
+			response, responseErr = nil, validateErr
+		} else {
+			group, groupErr := untold.FindGroup(requestObj.Payload["groupName"].(string))
+
+			if groupErr != nil {
+				response, responseErr = nil, groupErr
+			} else {
+				marshalledByes, marshalErr := json.Marshal(group)
+
+				if marshalErr != nil {
+					response, responseErr = nil, marshalErr
+				} else {
+					response, responseErr = marshalledByes, nil
+				}
+			}
+		}
+
+	case "pull_role":
+		validateErr := validatePayload(requestObj.Payload, map[string]string{
+			"roleName": "string",
+		})
+
+		if validateErr != nil {
+			response, responseErr = nil, validateErr
+		} else {
+			role, roleErr := untold.FindRole(requestObj.Payload["roleName"].(string))
+
+			if roleErr != nil {
+				response, responseErr = nil, roleErr
+			} else {
+				marshalledByes, marshalErr := json.Marshal(role)
+
+				if marshalErr != nil {
+					response, responseErr = nil, marshalErr
+				} else {
+					response, responseErr = marshalledByes, nil
+				}
+			}
+		}
+
 	default:
 		response, responseErr = nil, fmt.Errorf("unrecognised request type: %v", requestObj.RequestType)
 	}
@@ -455,6 +516,8 @@ func handleClientRequest(requestData []byte, untold Untold) ([]byte, error) {
 	if saveErr != nil {
 		log.Println(saveErr)
 	}
+
+	channel <- untold
 
 	return response, responseErr
 }

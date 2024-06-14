@@ -203,6 +203,29 @@ func (u *Untold) CreateRole(roleName string, scope string, permissions []string)
 	return 1, nil
 }
 
+// find a group based on name
+// ** - This needs to filter out the private users, to avoid sharing their private token
+func (u *Untold) FindGroup(groupName string) (AccessGroup, error) {
+	foundGroup, findGroupErr := u.system.findGroupByName(groupName, PublicAccessUser{Username: "system", PublicToken: []byte{}})
+
+	if findGroupErr != nil {
+		return AccessGroup{}, findGroupErr
+	}
+
+	return foundGroup, nil
+}
+
+// find a role based on name
+func (u *Untold) FindRole(roleName string) (AccessRole, error) {
+	foundRole, findRoleErr := u.system.findRoleByName(roleName, PublicAccessUser{Username: "system", PublicToken: []byte{}})
+
+	if findRoleErr != nil {
+		return AccessRole{}, findRoleErr
+	}
+
+	return foundRole, nil
+}
+
 // add a user to a group
 func (u *Untold) AddUserToGroup(username string, groupId int) (int, error) {
 	assignUserErr := u.system.assignUserToGroup(username, groupId, PublicAccessUser{Username: "system", PublicToken: []byte{}})
