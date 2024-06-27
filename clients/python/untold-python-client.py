@@ -1,6 +1,9 @@
+import math
 import socket
 import json
 import base64
+import random
+import string
 
 BASE_HOST = "127.0.0.1"
 BASE_PORT = 8080
@@ -57,7 +60,7 @@ class Untold :
             try :
                 s.connect((self.BASE_HOST, self.BASE_PORT))
                 s.sendall(req.convertToJSON())
-                data = s.recv(1024)
+                data = s.recv(51200) ## cap out at 50MB received
                 
                 return data
 
@@ -142,29 +145,40 @@ class Untold :
         except Exception as e:
             print(e)
     
-    ## add a table row to a sepcified table
-    ## ** need to find a way to buffer this connection to send heaps at once
-    def add_table_row(self, tableName: str, rowValue: dict):
+    ## add table rows to a specified table
+    def add_table_rows(self, tableName: str, rowValues: list[dict]):
         try:
             if self.User == None :
                 raise Exception("no authenticated user object could be found, please run the login command")
             
-            create_row_result = self.send_to_server(GeneralServerRequest(
-                "push_row",
-                {
-                    "tableName": tableName,
-                    "rowValue": rowValue
-                },
-                self.User
-            ))
+            ## handle multiple rows being pushed
+            if type(rowValues).__name__ == "list":
+                create_row_result = self.send_to_server(GeneralServerRequest(
+                    "push_row_multi",
+                    {
+                        "tableName": tableName,
+                        "rowValues": rowValues
+                    },
+                    self.User
+                ))
 
+            ## handle an individual row being pushed
+            else :
+                create_row_result = self.send_to_server(GeneralServerRequest(
+                    "push_row",
+                    {
+                        "tableName": tableName,
+                        "rowValue": rowValues
+                    },
+                    self.User
+                ))
+            
             print(create_row_result)
         
         except Exception as e:
             print(e)
     
     ## gets the values of table rows based on a query
-    ## ** Need to find a way to buffer this connection to recieve heaps at once
     def get_table_row(self, tableName: str, queryString: str):
         try:
             if self.User == None :
@@ -285,7 +299,7 @@ class Untold :
             print(e)
     
     ## find a group by its name
-    def find_group(self, groupName: str):
+    def find_group(self, groupName: str) -> dict:
         try:
             if self.User == None :
                 raise Exception("no authenticated user object could be found, please run the login command")
@@ -298,13 +312,13 @@ class Untold :
                 self.User
             ))
 
-            print(result)
+            return (json.loads(result))
         
         except Exception as e:
             print(e)
     
     ## find a role by its name
-    def find_role(self, roleName: str):
+    def find_role(self, roleName: str) -> dict:
         try:
             if self.User == None :
                 raise Exception("no authenticated user object could be found, please run the login command")
@@ -316,8 +330,8 @@ class Untold :
                 },
                 self.User
             ))
-
-            print(result)
+            
+            return (json.loads(result))
         
         except Exception as e:
             print(e)
@@ -517,3 +531,6 @@ class Untold :
         
         except Exception as e:
             print(e)
+
+# untold = Untold(BASE_HOST, BASE_PORT)
+# untold.login("admin1", "admin")

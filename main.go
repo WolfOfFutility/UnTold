@@ -71,8 +71,6 @@ func initSystem() (SystemDB, error) {
 }
 
 func main() {
-	// NormalPlay()
-	// ChannelPlay()
 	startServer()
 	// initSystem()
 	// db := DB{}

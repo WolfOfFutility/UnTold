@@ -32,7 +32,6 @@ func validateOutput(actionErr error, itemsEffected int, noItemsEffectedErr error
 }
 
 // validate that type assertions within the payload work
-// ** ISSUE - can't parse list[str] from Python properly
 func validatePayload(payload map[string]any, indexes map[string]string) error {
 	var ok bool
 
@@ -49,9 +48,6 @@ func validatePayload(payload map[string]any, indexes map[string]string) error {
 
 		case "map[string]any":
 			_, ok = payload[name].(map[string]any)
-
-		case "[]string":
-			_, ok = payload[name].([]string)
 
 		case "[]interface":
 			_, ok = payload[name].([]interface{})
@@ -95,7 +91,8 @@ func startServer() {
 	}
 
 	// Listen for incoming connections on port 8080
-	ln, err := net.Listen("tcp", ":8080")
+	log.Println("Server Started")
+	ln, err := net.Listen("tcp", "127.0.0.1:8080")
 	if err != nil {
 		fmt.Println(err)
 	} else {
@@ -128,8 +125,8 @@ func handleConnection(connection net.Conn, channel chan Untold) {
 	// Close the connection when we're done
 	defer connection.Close()
 
-	// Read incoming data
-	buf := make([]byte, 2048)
+	// Read incoming data - cap out at 50MB incoming
+	buf := make([]byte, 51200)
 	bitSize, err := connection.Read(buf)
 	if err != nil {
 		log.Println(err)
@@ -246,6 +243,38 @@ func handleClientRequest(requestData []byte, channel chan Untold) ([]byte, error
 			response, responseErr = validateOutput(addRowErr, numRows, fmt.Errorf("no rows were created"), fmt.Sprintf("created %v rows successfully", numRows))
 		}
 
+	case "push_row_multi":
+		validateErr := validatePayload(requestObj.Payload, map[string]string{
+			"tableName": "string",
+			"rowValues": "[]interface",
+		})
+
+		if validateErr != nil {
+			response, responseErr = nil, validateErr
+		} else {
+			numRows := 0
+			var addedRows int
+			var addRowErr error
+
+			for _, rowValue := range requestObj.Payload["rowValues"].([]interface{}) {
+				// parse the row value, and if successful add it to the table
+				parsedRowValue, ok := rowValue.(map[string]any)
+
+				if ok {
+					addedRows, addRowErr = untold.AddTableRow(requestObj.Payload["tableName"].(string), parsedRowValue)
+
+					if addRowErr == nil && addedRows > 0 {
+						numRows = numRows + addedRows
+					}
+
+				} else {
+					addRowErr = fmt.Errorf("unable to parse row value")
+				}
+			}
+
+			response, responseErr = validateOutput(addRowErr, numRows, fmt.Errorf("no rows were created"), fmt.Sprintf("created %v rows successfully", numRows))
+		}
+
 	case "pull_row":
 		validateErr := validatePayload(requestObj.Payload, map[string]string{
 			"tableName":   "string",
@@ -326,13 +355,30 @@ func handleClientRequest(requestData []byte, channel chan Untold) ([]byte, error
 		validateErr := validatePayload(requestObj.Payload, map[string]string{
 			"roleName":    "string",
 			"scope":       "string",
-			"permissions": "[]string",
+			"permissions": "[]interface",
 		})
 
 		if validateErr != nil {
 			response, responseErr = nil, validateErr
 		} else {
-			numRoles, createRoleErr := untold.CreateRole(requestObj.Payload["roleName"].(string), requestObj.Payload["scope"].(string), requestObj.Payload["permissions"].([]string))
+			var createRoleErr error
+			permissionsList := []string{}
+			numRoles := 0
+
+			for _, permItem := range requestObj.Payload["permissions"].([]interface{}) {
+				permissionStr, ok := permItem.(string)
+
+				if ok {
+					permissionsList = append(permissionsList, permissionStr)
+				} else {
+					createRoleErr = fmt.Errorf("cannot parse permission list")
+				}
+			}
+
+			if createRoleErr == nil {
+				numRoles, createRoleErr = untold.CreateRole(requestObj.Payload["roleName"].(string), requestObj.Payload["scope"].(string), permissionsList)
+			}
+
 			response, responseErr = validateOutput(createRoleErr, numRoles, fmt.Errorf("no roles were created"), fmt.Sprintf("created %v roles successfully", numRoles))
 		}
 
